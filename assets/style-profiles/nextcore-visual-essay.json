@@ -22,6 +22,17 @@
     "notes": "Cut when the sentence's point shifts, not when there's a pause in speech. The first frame doubles as the poster/hook — don't spend it on a logo or intro. Save the strongest emotional/cinematic footage for the escalation beat right before the conclusion, not on a throwaway line."
   },
 
+  "energy_curve": [
+    { "beat": "hook", "target_energy": 8 },
+    { "beat": "visual_contradiction", "target_energy": 6 },
+    { "beat": "thesis", "target_energy": 5 },
+    { "beat": "example", "target_energy": 6 },
+    { "beat": "proof", "target_energy": 6 },
+    { "beat": "abstraction", "target_energy": 4 },
+    { "beat": "escalation", "target_energy": 9 },
+    { "beat": "conclusion", "target_energy": 4 }
+  ],
+
   "pacing": {
     "pause_threshold_s": 0.35,
     "keep_pause_s": 0.12,
@@ -45,6 +56,13 @@
     "layout": "centered",
     "hierarchy": ["headline_word", "hero_subject", "supporting_symbols"],
     "rule_of_one": "One dominant idea per frame, readable within about a second. Collage is fine; illegibility is not."
+  },
+
+  "visual_language": {
+    "attention": "High-contrast headline word or hero subject as the primary focal point; supporting symbols stay clearly secondary. See references/cinematic_principles.md system 1.",
+    "depth": "Collage layering (foreground symbol/object over a flatter background) substitutes for real camera depth, since there's no live camera. See system 2.",
+    "light": "Not camera-lit — 'light' means graphic contrast: a bright headline against a controlled-value background, not literal lighting direction. See system 3.",
+    "tactility": "Footage inserts can run slightly textured/imperfect (grain, soft roll-off) so they don't feel clinically flat next to clean typography frames."
   },
 
   "color": {
@@ -91,9 +109,12 @@
 
   "sound_design": {
     "voice": { "style": "dry, front of the mix", "compression": "moderate", "de_essing": "light" },
+    "foley": "Light — most sources are stock/library footage without clean production audio; lean on a clip's own native sound sparingly rather than fabricating tactile detail that isn't there.",
+    "ambience": "Minimal; typography/collage frames are usually silent under the VO. Real footage inserts can keep a touch of their native ambience if it doesn't fight the voice.",
     "music_bed": { "role": "supports pacing, must never compete with the VO", "ducking": "lower under narration — see references/beat_plan_schema.md music_bed field" },
     "sfx_triggers": ["semantic_cut", "new_evidence_reveal", "big_number_reveal", "punchline"],
-    "sfx_not_on_every_cut": true
+    "sfx_not_on_every_cut": true,
+    "silence": "Use a beat of near-silence (VO + faint bed only, no SFX) right before the escalation beat's payoff so the payoff's sound actually lands."
   },
 
   "media": {

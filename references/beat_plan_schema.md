@@ -92,6 +92,8 @@ All timing here is already on the new (post-cut) timeline.
       "sfx": [
         { "at": 0.0, "path": "sfx/whoosh-01.wav", "gain_db": -6.0 }
       ],
+      "shot_size": "close_up",              // optional, see "Richer shot design fields" below
+      "attention_note": "eyes are the sole focal point, nothing else competes",   // optional
       "reasoning": "one sentence on why this clip, for your own future reference / debugging"
     },
     {
@@ -147,10 +149,26 @@ Guidance on filling this in:
   `loop: true` for anything shorter than the total runtime.
 - **Per-beat `sfx`** is a list (usually empty, sometimes one item, rarely more) of one-shot sounds
   timed to a specific moment *within* the beat — `at` is seconds from the beat's own `start`, not
-  the timeline's start. Reserve these for the moments the style profile's
-  `sound_design.sfx_triggers` actually names (a semantic cut, a reveal, a punchline) — per
-  `sound_design.sfx_not_on_every_cut`, a sound effect on every single beat reads as noisy and cheap
-  rather than punchy. Query the sound library the same way as visuals:
+  the timeline's start. Don't reach for "add a sound to this object" — the actual rule (see
+  `references/cinematic_principles.md` system 6, "sound the change of state") is to sound the
+  *moment something changes*: a cut, a reveal, an impact, an object entering or leaving frame.
+  Reserve these for the moments the style profile's `sound_design.sfx_triggers` actually names —
+  per `sound_design.sfx_not_on_every_cut`, a sound effect on every single beat reads as noisy and
+  cheap rather than punchy. Query the sound library the same way as visuals:
   `index_media.py query --kind audio --tags "whoosh,transition" --limit 5`.
 - Silence is a valid choice for both fields. Not every project needs a music bed, and most beats
   should have an empty `sfx` list — the goal is a few well-placed sounds, not constant coverage.
+  Deliberately reserving a beat with no SFX and a lower music bed right before a big reveal (an
+  energy-curve "breath," see `style_profile_schema.md`'s `energy_curve` field and
+  `cinematic_principles.md`'s energy-curve section) is what makes the next loud beat land.
+
+### Richer shot design fields (optional)
+
+`shot_size`, `attention_note`, and similar fields (`depth_note`, `camera_motion_note`,
+`ambience_override`) are optional per-beat annotations, not required for a routine auto-cut edit.
+Fill them in when a project's visual craft actually matters — a hero shot, a video where the user
+asked for cinematic quality specifically, or when you're using this schema for a from-scratch
+design/storyboard deliverable rather than the automated pipeline (see `cinematic_principles.md`'s
+shot-by-shot analysis format, which these fields are a lightweight version of). For a routine
+fast-turnaround edit, `intent`/`media`/`reasoning` are enough — don't pad every beat with fields
+that don't change the outcome.

@@ -20,6 +20,15 @@
     "notes": "Cut when the video switches between 'host talking', 'proof on screen', and 'reaction' — not on a fixed rhythm. For interview/podcast-length content, repeat 'deeper_walkthrough' as a longer loop instead of forcing the whole arc into one pass. Every mode switch should answer: does my face or the evidence convince the viewer more right now?"
   },
 
+  "energy_curve": [
+    { "beat": "cold_open", "target_energy": 8 },
+    { "beat": "context_on_camera", "target_energy": 5 },
+    { "beat": "evidence_screen_demo", "target_energy": 6 },
+    { "beat": "return_to_host_reaction", "target_energy": 7 },
+    { "beat": "deeper_walkthrough", "target_energy": 5 },
+    { "beat": "summary_cta", "target_energy": 6 }
+  ],
+
   "pacing": {
     "pause_threshold_s": 0.45,
     "keep_pause_s": 0.15,
@@ -43,6 +52,13 @@
     "layout": "medium_talking_head_plus_screen",
     "hierarchy": ["host_face", "screen_ui", "overlay_label"],
     "rule_of_one": "The host's face is the default state to return to; every cutaway should have an obvious reason to leave it and a natural point to cut back."
+  },
+
+  "visual_language": {
+    "attention": "The host's face is the primary focal point by default; screen UI becomes primary only during an evidence beat, with an overlay label as the secondary read. See references/cinematic_principles.md system 1.",
+    "depth": "Real camera depth where available (workspace foreground objects, over-the-shoulder framing) — this profile has actual footage to work with, not just collage layering. See system 2.",
+    "light": "Favor footage that already separates the host from the background (practical/window light, warm key) — the color.grade_cdl nudge supports good source lighting, it doesn't fix bad separation. See system 3.",
+    "tactility": "Screen recordings should stay crisp/legible (no added grain); workspace/lifestyle b-roll can carry its own natural texture."
   },
 
   "color": {
@@ -81,9 +97,12 @@
 
   "sound_design": {
     "voice": { "style": "natural, high in the mix", "compression": "light-to-moderate", "de_essing": "light" },
+    "foley": "Whatever the source recording actually carries (keyboard clatter, desk sounds) — keep it, don't add fabricated foley on top of real production audio.",
+    "ambience": "Keep the host's room tone consistent across cuts so switching between A-roll takes doesn't create an audible jump; workspace/lifestyle b-roll can carry its own ambience.",
     "music_bed": { "role": "sits lower under A-roll, even lower under screen tutorials; near-silent during interview/podcast segments", "ducking": "lower under narration — see references/beat_plan_schema.md music_bed field" },
     "sfx_triggers": ["ui_highlight_click", "reaction_whoosh", "meme_stinger", "punch_in_emphasis"],
-    "sfx_not_on_every_cut": true
+    "sfx_not_on_every_cut": true,
+    "silence": "Let a genuinely strong on-camera line land with just room tone under it before cutting to the next beat — don't rush a reaction with a sound effect."
   },
 
   "media": {

@@ -1,6 +1,6 @@
 ---
 name: video-editor
-description: Automates turning a raw voiceover recording (plus an optional script) into a fully edited, styled video inside DaVinci Resolve — trims dead air and filler words without ever cutting a word in half, writes punchy animated captions, fills the visual track with emotionally-matched b-roll/memes/reaction clips pulled from the user's own media library or free stock APIs, places sound effects and a music bed matched to each beat's content and energy, and applies a color grade (CDL) matched to the chosen editing style. Use this skill whenever the user asks to edit, cut, assemble, or automate a video with DaVinci Resolve, mentions turning a voiceover/narration/script into a finished video, wants auto-captions synced to speech, wants meme/b-roll insertion driven by what's being said, wants sound effects/music or color grading chosen automatically to fit the content, or references "the style" of a fast-cut explainer/video-essay or a talking-head/creator-led channel (e.g. word-triggered memes, cartoon/sitcom cutaways matching the topic, low-key filler shots for neutral moments, whoosh/stinger SFX on reveals). Also use it to build or update a media/sound-library tagging index, fetch stock b-roll, or create/edit a style profile for this pipeline.
+description: Automates turning a raw voiceover recording (plus an optional script) into a fully edited, styled video inside DaVinci Resolve — trims dead air and filler words without ever cutting a word in half, writes punchy animated captions, fills the visual track with emotionally-matched b-roll/memes/reaction clips pulled from the user's own media library or free stock APIs, places sound effects and a music bed matched to each beat's content and energy, and applies a color grade (CDL) matched to the chosen editing style. Use this skill whenever the user asks to edit, cut, assemble, or automate a video with DaVinci Resolve, mentions turning a voiceover/narration/script into a finished video, wants auto-captions synced to speech, wants meme/b-roll insertion driven by what's being said, wants sound effects/music or color grading chosen automatically to fit the content, or references "the style" of a fast-cut explainer/video-essay or a talking-head/creator-led channel (e.g. word-triggered memes, cartoon/sitcom cutaways matching the topic, low-key filler shots for neutral moments, whoosh/stinger SFX on reveals). Also use it to build or update a media/sound-library tagging index, fetch stock b-roll, create/edit a style profile for this pipeline, critique an existing video's cinematography/edit/sound design, or design a video/storyboard from scratch (shot list + audio map) using director/cinematographer-level judgment — the critique and design-from-scratch capabilities don't require DaVinci Resolve and work in any environment.
 compatibility: Requires a local machine with DaVinci Resolve installed and running (Free or Studio) — the Resolve scripting API only talks to a running local instance, so this skill cannot do the actual edit from a cloud/remote session. Also needs Python 3.9+, ffmpeg/ffprobe, and faster-whisper installed locally.
 ---
 
@@ -19,7 +19,31 @@ This is a multi-stage pipeline. Some stages are deterministic scripts (transcrip
 math, caption chunking). One stage — deciding *which clip goes with which sentence* — is a
 judgment call that only you (Claude, reading the transcript with real comprehension) can make
 well; don't try to reduce that to a keyword-matching script. Do the semantic work yourself, use
-the scripts as tools for everything mechanical.
+the scripts as tools for everything mechanical. `references/cinematic_principles.md` is the
+judgment framework behind that decision-making (attention, depth, light, motion, rhythm, sound
+correspondence) — read it before beat-planning anything where the visual/audio craft matters, not
+just the cut timing.
+
+## Two other capabilities that don't need Resolve at all
+
+Most of this file describes the build pipeline (transcribe → cut → caption → tag media → plan
+beats → build in Resolve), which does need a local Resolve instance. But two related requests
+should be handled with pure judgment, no Resolve, no local machine required — they can run in any
+environment, including this one if you're remote:
+
+- **Critiquing an existing video.** If the user describes or shows an edit and asks what's working
+  or what to fix, use `references/cinematic_principles.md`'s critique format (what already works →
+  biggest bottleneck → storyboard → composition/camera → lighting/color → edit/pacing → sound →
+  exact improvement plan). Don't jump straight to "add more transitions."
+- **Designing a video from scratch.** If the user wants a shot list, storyboard, or creative plan
+  before any footage exists, use the same file's video design output format (creative direction →
+  emotional goal → visual rules → story structure → shot list → audio map → color/texture → edit
+  rhythm → motion graphics → final polish). This can double as the starting point for a
+  `beat_plan.json` later, once footage/voiceover exists and the project moves into the pipeline
+  below.
+
+Skip straight past the environment check below for these two — it only gates the actual Resolve
+build.
 
 ## Before anything else: confirm the environment
 
@@ -159,7 +183,11 @@ audio) if the user's own library already covers a project's needs — don't reac
 Read `out/captions.json` (or `edit_plan.json`'s word list) together with `script.txt` if present,
 and segment the narration into beats — roughly sentence/clause-sized chunks. For each beat,
 decide what's on screen. `references/beat_plan_schema.md` has the exact output schema and, more
-importantly, the decision framework the user asked for by example:
+importantly, the decision framework the user asked for by example. Underneath that framework sits
+`references/cinematic_principles.md`'s six systems (attention/depth/light/motion/rhythm/sound
+correspondence) — use them to judge *which specific candidate* wins when several clips match a
+beat's tags equally well, and to sketch the sequence's energy curve (see the style profile's
+`energy_curve` field) rather than treating every beat as equally intense:
 
 - a specific word lands and there's an obvious visual pun for it → meme, timed to that word
 - the beat is explaining a concept/process → literal illustrative footage (cooking talk → kitchen

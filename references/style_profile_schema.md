@@ -1,5 +1,9 @@
 # Style profile schema
 
+A style profile carries the *mechanical* calibration (durations, colors, gain values) for a given
+editing style. `references/cinematic_principles.md` carries the *judgment* behind it — read that
+one first if the "why" behind any field here isn't obvious, it's referenced throughout this doc.
+
 A style profile is a small JSON file every pipeline script reads (`--style path.json`). Two
 calibrated starting points ship in `assets/style-profiles/`:
 
@@ -36,6 +40,17 @@ and revert.
     "notes": "free text — read this before beat-planning a specific video, it's the intended arc shape"
   },
 
+  "energy_curve": [
+    { "beat": "hook", "target_energy": 8 },
+    { "beat": "visual_contradiction", "target_energy": 6 },
+    { "beat": "thesis", "target_energy": 5 },
+    { "beat": "example", "target_energy": 6 },
+    { "beat": "proof", "target_energy": 6 },
+    { "beat": "abstraction", "target_energy": 4 },
+    { "beat": "escalation", "target_energy": 9 },
+    { "beat": "conclusion", "target_energy": 4 }
+  ],
+
   "pacing": {
     "pause_threshold_s": 0.35,
     "keep_pause_s": 0.12,
@@ -58,6 +73,13 @@ and revert.
     "layout": "centered",   // "centered" | "medium_talking_head_plus_screen"
     "hierarchy": ["headline_word", "hero_subject", "supporting_symbols"],
     "rule_of_one": "one dominant idea per frame, readable within about one second — collage is fine, illegibility is not"
+  },
+
+  "visual_language": {
+    "attention": "high-contrast headline word or hero subject as primary focal point; supporting symbols stay clearly secondary — see references/cinematic_principles.md system 1",
+    "depth": "collage layering (foreground symbol/object over a flatter background) substitutes for real foreground-subject-background camera depth, since there's no live camera — system 2",
+    "light": "not camera-lit (voiceover/asset-driven) — 'light' here means graphic contrast: bright headline against a controlled-value background, not literal lighting direction — system 3",
+    "tactility": "footage inserts can run slightly textured/imperfect (grain, soft roll-off) so they don't feel clinically flat next to clean typography frames"
   },
 
   "color": {
@@ -96,9 +118,12 @@ and revert.
 
   "sound_design": {
     "voice": { "style": "dry, front of the mix", "compression": "moderate", "de_essing": "light" },
+    "foley": "light — most sources are stock/library footage without clean production audio, so lean on the source clip's own sound sparingly rather than trying to fabricate tactile detail that isn't there",
+    "ambience": "minimal; typography/collage frames are usually silent under the VO, real footage inserts can keep a touch of their native ambience if it doesn't fight the voice",
     "music_bed": { "role": "supports pacing, must never compete with VO", "ducking": "lower under narration, see references/beat_plan_schema.md music_bed field" },
     "sfx_triggers": ["semantic_cut", "new_evidence_reveal", "big_number_reveal", "punchline"],
-    "sfx_not_on_every_cut": true
+    "sfx_not_on_every_cut": true,
+    "silence": "use a beat of near-silence (VO + faint bed only, no SFX) right before the escalation beat's payoff so the payoff's sound actually lands — see references/cinematic_principles.md's energy curves and silence-as-tool guidance"
   },
 
   "media": {
@@ -128,6 +153,23 @@ longer loop for interview-length content. `cut_on` documents *why* a cut happens
 vs `information_mode_change` (Honey Montana — cut when the video switches between "host talking",
 "proof on screen", and "reaction", not on a fixed rhythm).
 
+### `energy_curve`
+A concrete plan for `references/cinematic_principles.md`'s "waves, not constant novelty" guidance
+— each entry names a stage from `narrative_arc.beats_template` and a target energy (0–10). When
+beat-planning, this is what tells you the `abstraction` beat is *supposed* to feel calmer than the
+`escalation` beat right after it — don't read a low target as "make it boring," read it as
+deliberate contrast that makes the next high-energy beat hit harder. Energy here is a composite of
+cut pace, motion intensity, sound density, and information density together, not any single one
+of those in isolation — a beat can be visually still but sonically dense, or vice versa, and still
+land at its target.
+
+### `visual_language`
+Names how this profile handles the six systems from `references/cinematic_principles.md` when
+there's no live camera to light or move (this pipeline assembles existing footage/graphics, it
+doesn't shoot new coverage) — `attention`/`depth`/`light` here are the graphic-design equivalents
+of camera-language decisions. Read the full six-systems section before beat-planning a project
+where the visual craft matters, not just the cut timing.
+
 ### `pacing.shot_duration_by_intent_s`
 Replaces a single global pacing number with per-intent ranges — a keyword meme and a diagram
 explanation shouldn't share a duration budget. These map loosely onto `beat_plan.json`'s `intent`
@@ -153,9 +195,14 @@ applied, and don't be afraid to adjust these per project once you've looked at a
 ### `sound_design`
 Free-text guidance rather than machine-parsed numbers, because voice/mix decisions depend on the
 actual recording. What *is* machine-consumed is the beat plan's `sfx` and `music_bed` fields (see
-`beat_plan_schema.md`) — `sound_design` here is the judgment context for filling those in well:
-Nextcore fires a sound effect on a meaningful reveal, not on every cut; Honey Montana keeps the
-natural voice high in the mix and uses SFX mostly for UI highlights and meme stingers.
+`beat_plan_schema.md`) — `sound_design` here is the judgment context for filling those in well,
+following the six-layer audio system in `references/cinematic_principles.md` (voice, foley,
+ambience, designed SFX, music, silence): Nextcore fires a sound effect on a meaningful reveal, not
+on every cut, and treats silence as a real tool before a payoff; Honey Montana keeps the natural
+voice high in the mix and uses SFX mostly for UI highlights and meme stingers. `foley`/`ambience`
+are deliberately modest for an asset-driven pipeline like this one — there's no production sound
+to work with, only whatever a stock/library clip already carries — don't invent tactile detail
+that isn't actually in the source.
 
 ### Everything else
 `pacing.pause_threshold_s`/`keep_pause_s`/`pad_s`, `captions.*`, and `media.*` carry over unchanged
