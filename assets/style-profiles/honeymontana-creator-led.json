@@ -1,0 +1,101 @@
+{
+  "name": "honeymontana-creator-led",
+  "description": "Talking-head + screen-demo style calibrated from a breakdown of the Honey Montana YouTube channel: the presenter is the stable visual anchor, cutaways (screen recordings, memes, reaction inserts) punctuate rather than replace them. Use for projects with an actual face-to-camera recording (not pure voiceover). Copy this file per channel/series instead of editing it in place.",
+
+  "aspect_ratios": {
+    "16:9": { "width": 1920, "height": 1080, "fps": 30 },
+    "9:16": { "width": 1080, "height": 1920, "fps": 30 }
+  },
+
+  "narrative_arc": {
+    "beats_template": [
+      "cold_open",
+      "context_on_camera",
+      "evidence_screen_demo",
+      "return_to_host_reaction",
+      "deeper_walkthrough",
+      "summary_cta"
+    ],
+    "cut_on": "information_mode_change",
+    "notes": "Cut when the video switches between 'host talking', 'proof on screen', and 'reaction' — not on a fixed rhythm. For interview/podcast-length content, repeat 'deeper_walkthrough' as a longer loop instead of forcing the whole arc into one pass. Every mode switch should answer: does my face or the evidence convince the viewer more right now?"
+  },
+
+  "pacing": {
+    "pause_threshold_s": 0.45,
+    "keep_pause_s": 0.15,
+    "pad_s": 0.05,
+    "remove_filler_words": true,
+    "filler_words": ["um", "uh", "umm", "erm", "хм", "эм", "ээ", "ну", "как бы", "типа"],
+    "max_removed_fraction_warning": 0.35,
+    "min_visual_change_s": 4.0,
+    "shot_duration_by_intent_s": {
+      "a_roll": [2.0, 8.0],
+      "digital_punch_in": [1.0, 3.0],
+      "reaction_insert": [0.5, 2.0],
+      "meme_smash_cut": [0.5, 1.5],
+      "screen_demo": [10.0, 30.0],
+      "workspace_broll": [2.0, 6.0]
+    },
+    "variable_pacing_rule": "Slow down for anything the viewer must actually read or process (code, screen demos, comparisons) — a code screen can legitimately hold 10-30s. Speed up hard for punchlines/memes/reactions. Don't apply one uniform cut rhythm across both."
+  },
+
+  "composition": {
+    "layout": "medium_talking_head_plus_screen",
+    "hierarchy": ["host_face", "screen_ui", "overlay_label"],
+    "rule_of_one": "The host's face is the default state to return to; every cutaway should have an obvious reason to leave it and a natural point to cut back."
+  },
+
+  "color": {
+    "system": "natural-tech-warm",
+    "accent_hex": null,
+    "accent_usage": "No single graphic accent color system — identity comes from the recurring face, workspace, and UI textures instead. Keep grading consistent across A-roll sessions so cuts back to the host don't jump in color temperature.",
+    "grade_cdl": {
+      "slope": [1.0, 1.0, 1.0],
+      "offset": [0.01, 0.0, -0.01],
+      "power": [1.0, 1.0, 1.0],
+      "saturation": 1.03
+    },
+    "notes": "A small warm nudge (slight red lift / blue pull in offset) plus a touch more saturation than neutral — meant to flatter skin tones and warm up room lighting without fighting the naturally cool light of monitors/UI in frame. Nudge by eye against a real render; this is a starting point, not a fixed look."
+  },
+
+  "camera_motion": {
+    "techniques": ["static_camera", "digital_punch_in_on_stress", "screen_recording_hold", "over_the_shoulder_broll_move"],
+    "avoid": "Don't animate the host cam itself beyond the punch-in — physical-feeling handheld moves undercut the 'stable anchor' role the face is playing."
+  },
+
+  "transitions": {
+    "backbone": "jump_cut_and_punch_in",
+    "rule": "Switch information MODE (host / proof / reaction) rather than cutting for rhythm alone. A-roll-to-screen and screen-to-A-roll should be hard cuts; punch-ins are for emphasis within a single mode."
+  },
+
+  "captions": {
+    "enabled": true,
+    "max_words_per_chunk": 6,
+    "max_chars_per_chunk": 36,
+    "max_duration_s": 3.0,
+    "break_on_punctuation": true,
+    "case": "sentence",
+    "semantic_highlighter": false,
+    "style_notes": "Utility captions, not a graphic centerpiece: short bold caption, highlight one word at most, arrows/circles around UI controls being discussed, a label over language/tool names, rating or yes/no markers for comparisons/tier lists."
+  },
+
+  "sound_design": {
+    "voice": { "style": "natural, high in the mix", "compression": "light-to-moderate", "de_essing": "light" },
+    "music_bed": { "role": "sits lower under A-roll, even lower under screen tutorials; near-silent during interview/podcast segments", "ducking": "lower under narration — see references/beat_plan_schema.md music_bed field" },
+    "sfx_triggers": ["ui_highlight_click", "reaction_whoosh", "meme_stinger", "punch_in_emphasis"],
+    "sfx_not_on_every_cut": true
+  },
+
+  "media": {
+    "meme_frequency_cap_s": 120,
+    "beat_min_duration_s": 1.5,
+    "beat_max_duration_s": 30.0,
+    "filler_categories": ["workspace-broll", "lifestyle-broll", "abstract-motion"],
+    "quality_min_height_px": 720
+  },
+
+  "render": {
+    "preset": "H.264 Master",
+    "format": "mp4"
+  }
+}

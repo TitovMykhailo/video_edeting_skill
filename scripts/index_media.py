@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Maintain the tagged media-library index used for beat planning.
+"""Maintain the tagged asset-library index used for beat planning — covers both the visual
+media library (video/image/gif clips) and a sound library (music/SFX), same index format.
 
-Three subcommands, meant to be used together in a loop (see SKILL.md step 4):
+Three subcommands, meant to be used together in a loop (see SKILL.md steps 4 and 5):
 
   scan        walk the library, find new/changed files, probe them with
-              ffprobe, and pull a few representative frames per video so you
-              (Claude) can look at them and write tags.
+              ffprobe, and pull a few representative frames per video (or a
+              waveform image per audio file) so you (Claude) can look at
+              them and write tags.
   write-tags  commit the tags/description/mood/quality you produced after
-              looking at scan's frames into the persistent index.
+              looking at scan's frames/waveforms into the persistent index.
   query       search the tagged index for candidates for a beat, scored by
-              tag/mood overlap with a recency penalty.
+              tag/mood overlap with a recency penalty. Filter with --kind to
+              search only visual assets or only audio (sfx/music).
 
 The index lives at <library>/_media_index.json. Schema for every field is in
 references/media_tagging_schema.md — read that before writing tags, it has
-guidance on what makes a good tag set.
+guidance on what makes a good tag set, including how to judge an SFX/music
+file from its waveform image since you can't literally listen to it.
 """
 import argparse
 import json
@@ -25,7 +29,8 @@ from datetime import datetime, timezone
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".avif", ".tiff"}
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
 GIF_EXTS = {".gif"}
-ALL_EXTS = IMAGE_EXTS | VIDEO_EXTS | GIF_EXTS
+AUDIO_EXTS = {".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg"}
+ALL_EXTS = IMAGE_EXTS | VIDEO_EXTS | GIF_EXTS | AUDIO_EXTS
 
 INDEX_FILENAME = "_media_index.json"
 IGNORE_DIR_PREFIXES = ("_scan_frames", ".")
@@ -52,6 +57,8 @@ def kind_of(ext):
         return "image"
     if ext in GIF_EXTS:
         return "gif"
+    if ext in AUDIO_EXTS:
+        return "audio"
     return "video"
 
 
@@ -111,9 +118,9 @@ def probe_media(abs_path, kind):
         except ValueError:
             pass
 
-    width = height = codec = None
+    width = height = codec = sample_rate = None
     for stream in data.get("streams", []):
-        if stream.get("codec_type") == "video":
+        if stream.get("codec_type") == "video" and width is None:
             width = stream.get("width")
             height = stream.get("height")
             codec = stream.get("codec_name")
@@ -122,7 +129,14 @@ def probe_media(abs_path, kind):
                     duration_s = round(float(stream["duration"]), 3)
                 except ValueError:
                     pass
-            break
+        elif stream.get("codec_type") == "audio" and codec is None:
+            codec = stream.get("codec_name")
+            sample_rate = stream.get("sample_rate")
+            if duration_s is None and stream.get("duration"):
+                try:
+                    duration_s = round(float(stream["duration"]), 3)
+                except ValueError:
+                    pass
 
     orientation = None
     if width and height:
@@ -133,7 +147,7 @@ def probe_media(abs_path, kind):
         else:
             orientation = "square"
 
-    return {
+    result = {
         "duration_s": duration_s,
         "width": width,
         "height": height,
@@ -141,11 +155,41 @@ def probe_media(abs_path, kind):
         "codec": codec,
         "kind": kind,
     }
+    if kind == "audio" and sample_rate:
+        result["sample_rate"] = sample_rate
+    return result
+
+
+def extract_waveform(abs_path, rel_path, frames_dir):
+    """Render a waveform image so an audio file's energy/transient character can be judged by
+    eye — a percussive whoosh/click looks visibly different from a sustained pad or music loop,
+    which is the closest thing to 'listening' available without decoding audio directly."""
+    safe_name = rel_path.replace("/", "__")
+    out_dir = os.path.join(frames_dir, safe_name)
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "waveform.png")
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", abs_path,
+                "-filter_complex", "showwavespic=s=800x160:colors=white",
+                "-frames:v", "1", out_path,
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    return [out_path] if os.path.exists(out_path) else []
 
 
 def extract_frames(abs_path, rel_path, frames_dir, kind, count, duration_s):
     if kind == "image":
         return [abs_path]
+    if kind == "audio":
+        if not have_tool("ffmpeg"):
+            return []
+        return extract_waveform(abs_path, rel_path, frames_dir)
     if not have_tool("ffmpeg"):
         return []
 
@@ -257,6 +301,7 @@ def cmd_write_tags(args):
 
         index["files"][rel_path] = {
             "hash": file_hash(abs_path),
+            "kind": kind,  # stored independently of `probe` — probe can be None without ffprobe
             "probe": probe,
             "tags": tag_data.get("tags", []),
             "description": tag_data.get("description", ""),
@@ -264,6 +309,11 @@ def cmd_write_tags(args):
             "quality_ok": tag_data.get("quality_ok", True),
             "quality_notes": tag_data.get("quality_notes", ""),
             "source": tag_data.get("source", "own_library"),
+            # audio-only fields (SFX/music) — left null for visual assets, see
+            # references/media_tagging_schema.md
+            "energy": tag_data.get("energy"),
+            "loopable": tag_data.get("loopable"),
+            "tempo_bpm": tag_data.get("tempo_bpm"),
             "tagged_at": now,
         }
         written += 1
@@ -291,6 +341,8 @@ def cmd_query(args):
             probe = entry.get("probe") or {}
             if probe.get("orientation") and probe["orientation"] != args.orientation:
                 continue
+        if args.kind and entry.get("kind") != args.kind:
+            continue
 
         score = 0.0
         reasons = []
@@ -321,12 +373,16 @@ def cmd_query(args):
             results.append(
                 {
                     "path": rel_path,
+                    "kind": entry.get("kind"),
                     "score": round(score, 2),
                     "reasons": reasons,
                     "probe": entry.get("probe"),
                     "tags": entry.get("tags", []),
                     "description": entry.get("description", ""),
                     "mood": entry.get("mood", ""),
+                    "energy": entry.get("energy"),
+                    "loopable": entry.get("loopable"),
+                    "tempo_bpm": entry.get("tempo_bpm"),
                 }
             )
 
@@ -355,13 +411,14 @@ def main():
 
     p_write = sub.add_parser("write-tags", help="commit tags into the persistent index")
     p_write.add_argument("--library", required=True)
-    p_write.add_argument("--tags", required=True, help="JSON file: {relative_path: {tags, description, mood, quality_ok, quality_notes, source}}")
+    p_write.add_argument("--tags", required=True, help="JSON file: {relative_path: {tags, description, mood, quality_ok, quality_notes, source, energy, loopable, tempo_bpm}} — the last three are audio-only, see references/media_tagging_schema.md")
     p_write.set_defaults(func=cmd_write_tags)
 
     p_query = sub.add_parser("query", help="search the tagged index")
     p_query.add_argument("--library", required=True)
     p_query.add_argument("--tags", default="", help="comma-separated tags/keywords")
     p_query.add_argument("--mood")
+    p_query.add_argument("--kind", choices=["video", "image", "gif", "audio"], help="restrict to one asset kind, e.g. 'audio' when picking SFX/music")
     p_query.add_argument("--orientation", choices=["landscape", "portrait", "square"])
     p_query.add_argument("--allow-low-quality", action="store_true")
     p_query.add_argument("--exclude-recent", help="path to a JSON list of recently used relative paths")

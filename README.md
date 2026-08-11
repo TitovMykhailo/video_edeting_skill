@@ -4,8 +4,11 @@ A Claude Code skill that turns a raw voiceover recording into a fast-cut, meme/b
 captioned edit inside DaVinci Resolve — automatically. You give it a narration recording (plus
 an optional script), and it transcribes, trims silence and filler words without ever cutting a
 word in half, writes punchy synced captions, picks emotionally/contextually matching clips for
-each sentence from your own media library (or free stock), and assembles all of it into a
-DaVinci Resolve project it renders a draft from.
+each sentence from your own media library (or free stock), places sound effects and a music bed
+matched to each beat, applies a color grade matched to the chosen style, and assembles all of it
+into a DaVinci Resolve project it renders a draft from. Two starting style profiles — a fast-cut
+faceless visual-essay style and a talking-head/screen-demo creator style — are calibrated from
+real channel editing-grammar breakdowns (shot durations by intent, composition, color, sound).
 
 Full workflow, pipeline stages, and file schemas live in [`SKILL.md`](./SKILL.md) — that's the
 file Claude actually reads when this skill triggers. Everything below is just human-facing setup.
@@ -47,18 +50,23 @@ Fix whatever it flags (it prints exact commands / env vars per OS — see
 ```
 SKILL.md                    the skill itself — read this first
 scripts/                     the deterministic pipeline stages (transcribe, cut planning,
-                                 captions, media indexing, stock fetch) + DaVinci Resolve
-                                 automation in scripts/resolve/
+                                 captions, media/sound indexing, stock fetch) + DaVinci Resolve
+                                 automation in scripts/resolve/ (tracks, captions, color grade,
+                                 sound design, render)
 references/                 schemas + the Resolve scripting API cheat sheet
-assets/style-profiles/       the default "fast-explainer" style profile — copy per channel
-config.example.json          copy to config.json and fill in your media library path / keys
+assets/style-profiles/       nextcore-visual-essay.json (default, faceless voiceover style) and
+                                 honeymontana-creator-led.json (talking-head style) — copy per channel
+config.example.json          copy to config.json and fill in your media/sound library paths / keys
 ```
 
-## Media library and stock
+## Media and sound library, and stock
 
-Keep your own collected clips/memes/reaction footage in one long-lived folder outside this repo
-(point `config.json`'s `media_library_path` at it). This skill tags it for you — see step 4 in
-`SKILL.md` — instead of asking you to organize it by hand. Free stock (Pexels/Pixabay/Giphy) can
-fill gaps; each needs its own free API key set as an environment variable, see
-`references/media_tagging_schema.md` for licensing notes per provider (Giphy in particular has
-commercial-use restrictions worth knowing about).
+Keep your own collected clips/memes/reaction footage — and SFX/music — in one long-lived folder
+outside this repo (point `config.json`'s `media_library_path`/`sound_library_path` at it, usually
+the same folder). This skill tags it for you — see steps 4–5 in `SKILL.md` — instead of asking
+you to organize it by hand; audio gets judged from an auto-generated waveform image since Claude
+can't literally listen to a file. Free visual stock (Pexels/Pixabay/Giphy) can fill gaps; each
+needs its own free API key set as an environment variable, see `references/media_tagging_schema.md`
+for licensing notes per provider (Giphy in particular has commercial-use restrictions worth
+knowing about). There's no automated stock source for audio — the sound library only grows from
+what you add to it.

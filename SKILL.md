@@ -1,6 +1,6 @@
 ---
 name: video-editor
-description: Automates turning a raw voiceover recording (plus an optional script) into a fully edited, styled video inside DaVinci Resolve — trims dead air and filler words without ever cutting a word in half, writes punchy animated captions, and fills the visual track with emotionally-matched b-roll, memes, and reaction clips pulled from the user's own media library or free stock APIs. Use this skill whenever the user asks to edit, cut, assemble, or automate a video with DaVinci Resolve, mentions turning a voiceover/narration/script into a finished video, wants auto-captions synced to speech, wants meme/b-roll insertion driven by what's being said, or references "the style" of a fast-cut explainer/video-essay (e.g. word-triggered memes, cartoon/sitcom cutaways matching the topic, low-key filler shots for neutral moments). Also use it to build or update a media-library tagging index, fetch stock b-roll, or create/edit a style profile for this pipeline.
+description: Automates turning a raw voiceover recording (plus an optional script) into a fully edited, styled video inside DaVinci Resolve — trims dead air and filler words without ever cutting a word in half, writes punchy animated captions, fills the visual track with emotionally-matched b-roll/memes/reaction clips pulled from the user's own media library or free stock APIs, places sound effects and a music bed matched to each beat's content and energy, and applies a color grade (CDL) matched to the chosen editing style. Use this skill whenever the user asks to edit, cut, assemble, or automate a video with DaVinci Resolve, mentions turning a voiceover/narration/script into a finished video, wants auto-captions synced to speech, wants meme/b-roll insertion driven by what's being said, wants sound effects/music or color grading chosen automatically to fit the content, or references "the style" of a fast-cut explainer/video-essay or a talking-head/creator-led channel (e.g. word-triggered memes, cartoon/sitcom cutaways matching the topic, low-key filler shots for neutral moments, whoosh/stinger SFX on reveals). Also use it to build or update a media/sound-library tagging index, fetch stock b-roll, or create/edit a style profile for this pipeline.
 compatibility: Requires a local machine with DaVinci Resolve installed and running (Free or Studio) — the Resolve scripting API only talks to a running local instance, so this skill cannot do the actual edit from a cloud/remote session. Also needs Python 3.9+, ffmpeg/ffprobe, and faster-whisper installed locally.
 ---
 
@@ -50,7 +50,7 @@ script by asking the user or looking in the folder — but a typical one looks l
 my-project/
 ├── narration.wav          # or .mp3/.m4a — the raw voiceover recording
 ├── script.txt              # optional — intended text; transcript is ground truth for timing
-├── style.json               # optional — defaults to assets/style-profiles/fast-explainer.json
+├── style.json               # optional — defaults to assets/style-profiles/nextcore-visual-essay.json
 └── out/                      # everything this skill generates lands here
     ├── transcript.json
     ├── edit_plan.json
@@ -61,8 +61,10 @@ my-project/
 
 A user's **media library** (their own folder of pre-collected clips/memes/show clips, plus a
 `_stock_cache/` subfolder this skill manages for downloaded stock footage) is a separate,
-long-lived folder reused across projects — not per-project. Ask for its path once and remember
-it (e.g. suggest the user keep it in `config.json`, see `config.example.json`).
+long-lived folder reused across projects — not per-project. The same folder (or a separate one —
+ask) doubles as the **sound library** for SFX/music, tagged and queried through the same index —
+see step 4. Ask for the path(s) once and remember them (e.g. suggest the user keep them in
+`config.json`, see `config.example.json`).
 
 ## The pipeline
 
@@ -143,6 +145,15 @@ Downloaded stock also needs tagging — feed it through the same scan/write-tags
 `references/media_tagging_schema.md` for provider notes and licensing caveats (Giphy in
 particular has commercial-use restrictions worth flagging to the user, not just Pexels/Pixabay).
 
+**Do the same for the sound library** (SFX and music beds) — it's the same script, the same
+index, just audio files instead of video. `scan` gives you a waveform image per audio file
+instead of frame stills (you can't literally listen, but a waveform tells you percussive-vs-
+sustained at a glance); `write-tags` for audio also expects `energy`/`loopable`/`tempo_bpm` — see
+`references/media_tagging_schema.md`'s audio tagging section for how to judge those from a
+waveform. There's no `fetch_stock.py` equivalent for audio (no automated sourcing) — this library
+only grows from whatever the user already has. Skip the stock-fetch step entirely (visual or
+audio) if the user's own library already covers a project's needs — don't reach for it reflexively.
+
 ### 5. Plan the beats — this is the creative core, do it yourself
 
 Read `out/captions.json` (or `edit_plan.json`'s word list) together with `script.txt` if present,
@@ -169,24 +180,38 @@ python3 scripts/index_media.py query --library <path-to-library> --tags "cooking
 then pick from the returned candidates using your own judgment (the query script only scores
 tag/keyword overlap and recency — it can't tell you which candidate is actually the funniest or
 most apt, that's your call). Keep a running `out/recent_uses.json` (just a list of recently used
-file paths) so you naturally avoid reusing the same meme twice in one video. Write your final
-per-beat decisions to `out/beat_plan.json` in the schema doc's format.
+file paths) so you naturally avoid reusing the same meme twice in one video.
+
+**Sound is part of this same judgment call, not an afterthought.** For each beat, decide whether
+it earns an SFX cue per the style profile's `sound_design.sfx_triggers` (most beats shouldn't —
+`sfx_not_on_every_cut` is there for a reason) and, once, decide the whole video's `music_bed` (or
+that it doesn't need one). Query the sound library the same way as visuals —
+`index_media.py query --library <path> --kind audio --tags "whoosh" --limit 5` for an SFX cue,
+`--kind audio --tags "lofi,background" --mood <mood>` for a bed — and use `energy`/`loopable` in
+the results to judge fit (a `percussive` one-shot for a cut accent, a `sustained`+`loopable` one
+for a bed). Write the final per-beat decisions, including `sfx` and the top-level `music_bed`,
+to `out/beat_plan.json` in the schema doc's format (`references/beat_plan_schema.md`).
 
 ### 6. Build it in Resolve and render
 
 ```bash
 python3 scripts/resolve/build_project.py --project-name "<name>" --edit-plan out/edit_plan.json \
   --beat-plan out/beat_plan.json --captions out/captions.srt --style style.json \
+  --aspect 16:9 --media-library <path-to-library> --sound-library <path-to-library> \
   --render-out out/render.mp4
 ```
 
-This connects to the running Resolve instance, creates/opens the project, sets timeline
-resolution/fps from the style profile's aspect ratio, imports every media file referenced by the
-edit plan and beat plan into organized Media Pool bins, builds the trimmed narration audio track,
-builds the video track from the beat plan, imports the caption SRT as a subtitle track, and
-renders a draft MP4. It leaves the Resolve project open afterward for the user to fine-tune
-(color, caption styling, manual trims) — this skill gets them 90% of the way, not a
-push-button final master. Tell the user that explicitly once it's done.
+(`--sound-library` defaults to `--media-library` if it's the same folder — pass it separately
+only when SFX/music live somewhere else.) This connects to the running Resolve instance,
+creates/opens the project, sets timeline resolution/fps from the style profile's aspect ratio,
+imports every media/sound file referenced by the edit plan and beat plan into organized Media
+Pool bins, builds the trimmed narration audio track plus separate SFX and music-bed audio tracks,
+builds the video track from the beat plan, applies the style profile's color grade (CDL) to every
+video clip, imports the caption SRT as a subtitle track, and renders a draft MP4. It leaves the
+Resolve project open afterward for the user to fine-tune (fine color work, caption styling,
+manual trims, and audio levels if the gain-setting call didn't stick — it prints a clear warning
+when that happens, see `references/resolve_scripting_api.md`) — this skill gets them most of the
+way there, not a push-button final master. Tell the user that explicitly once it's done.
 
 If anything in this step errors, don't guess — read the Resolve error text (the API returns
 useful messages) and check `references/resolve_scripting_api.md`'s troubleshooting notes before
@@ -194,11 +219,26 @@ retrying blindly.
 
 ## Style profiles
 
-`assets/style-profiles/fast-explainer.json` is the default, modeled on the fast-cut,
-meme-and-cutaway-driven explainer style the user pointed to as reference (dense visual changes,
-punchy 2–4 word captions, aggressive pause trimming, frequent keyword-triggered memes). Copy and
-edit it per channel/series rather than hand-editing the default — pass `--style path/to/your.json`
-to every script above. Field-by-field meaning is in `references/style_profile_schema.md`.
+Two calibrated starting profiles ship in `assets/style-profiles/`, each modeled on a real
+channel's editing grammar (shot durations by intent, composition, color system, transition
+vocabulary, sound design hierarchy — see `references/style_profile_schema.md` for the full field
+breakdown):
+
+- **`nextcore-visual-essay.json`** (default) — fast-cut, faceless visual essay: the image changes
+  almost every phrase, typography and metaphor-driven cutaways carry the emotion, hard cuts,
+  editorial-contrast color (one neutral base + one accent color). This is the right fit for a
+  pure-voiceover project with no talking head — which is this user's normal workflow — so use it
+  unless told otherwise.
+- **`honeymontana-creator-led.json`** — talking-head + screen-demo style: the presenter is the
+  visual anchor, cutaways (screen recordings, memes, reactions) punctuate rather than replace
+  them, variable pacing (long holds on things the viewer needs to read, fast cuts on punchlines),
+  natural-tech-warm color. Only relevant if a project actually has face-to-camera footage — don't
+  reach for this on a voiceover-only project.
+
+Copy whichever is closer per channel/series rather than editing the shipped ones in place — pass
+`--style path/to/your.json` to every script above. If a project's needs sit between the two, or
+neither narrative arc fits the script's actual shape, say so and adjust a copy rather than
+forcing the content into a template it doesn't match.
 
 ## Aspect ratio
 

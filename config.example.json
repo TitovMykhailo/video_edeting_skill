@@ -2,8 +2,11 @@
   "_comment": "Copy to config.json (gitignored) and fill in. Not read automatically by any script — it's a place to keep the paths/keys you'd otherwise retype every project; paste the relevant values as CLI flags or env vars.",
 
   "media_library_path": "/path/to/your/media-library",
+  "sound_library_path": "/path/to/your/media-library",
+  "_sound_library_note": "Usually the same folder as media_library_path (with sfx/ and music/ subfolders) — only set this to something different if SFX/music genuinely live elsewhere.",
 
-  "default_style_profile": "assets/style-profiles/fast-explainer.json",
+  "default_style_profile": "assets/style-profiles/nextcore-visual-essay.json",
+  "_style_profile_note": "Use assets/style-profiles/honeymontana-creator-led.json instead for projects with an actual talking-head recording.",
 
   "default_aspect_ratio": "16:9",
 

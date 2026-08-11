@@ -20,6 +20,16 @@ def get_or_create_folder(media_pool, root_folder, name):
     return media_pool.AddSubFolder(root_folder, name)
 
 
+def ensure_audio_tracks(timeline, count):
+    """Make sure the timeline has at least `count` audio tracks (narration=1, SFX=2, music=3)."""
+    current = timeline.GetTrackCount("audio")
+    for _ in range(count - current):
+        if not timeline.AddTrack("audio"):
+            raise RuntimeError(
+                f"Could not add an audio track (have {timeline.GetTrackCount('audio')}, need {count})."
+            )
+
+
 def import_into_bin(media_pool, folder, abs_paths, cache):
     """Import files not already in `cache` (abs_path -> MediaPoolItem), into `folder`."""
     to_import = [p for p in abs_paths if p not in cache]

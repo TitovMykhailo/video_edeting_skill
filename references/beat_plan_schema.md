@@ -70,6 +70,12 @@ All timing here is already on the new (post-cut) timeline.
 
 ```jsonc
 {
+  "music_bed": {
+    "path": "music/lofi-bed-01.mp3",
+    "loop": true,
+    "base_gain_db": -18.0,
+    "duck_gain_db": -26.0
+  },
   "beats": [
     {
       "start": 0.0,
@@ -83,6 +89,9 @@ All timing here is already on the new (post-cut) timeline.
         "src_out": 1.6,
         "loop": false
       },
+      "sfx": [
+        { "at": 0.0, "path": "sfx/whoosh-01.wav", "gain_db": -6.0 }
+      ],
       "reasoning": "one sentence on why this clip, for your own future reference / debugging"
     },
     {
@@ -91,6 +100,7 @@ All timing here is already on the new (post-cut) timeline.
       "text": "...",
       "intent": "illustrative",
       "media": { "path": "...", "src_in": 2.0, "src_out": 6.3, "loop": false },
+      "sfx": [],
       "reasoning": "..."
     }
   ]
@@ -122,4 +132,25 @@ Guidance on filling this in:
   holding last frame, per what looks natural for that clip.
 - Update `out/recent_uses.json` (a flat list of media paths) as you go, and consult it — a clip
   used in the last `media.meme_frequency_cap_s` seconds of runtime should be deprioritized unless
-  it's a deliberate running gag.
+  it's a deliberate running gag. Track sound picks in the same file, alongside visual ones, so a
+  sting doesn't get reused every time the narration hits a similar beat either.
+
+### Sound design fields
+
+- **Top-level `music_bed`** (optional — omit entirely if the video should run without one) is a
+  single background track for the whole video, queried from the sound library with
+  `index_media.py query --kind audio --tags "..." --mood ...` guided by the style profile's
+  `sound_design.music_bed` notes and the overall tone of the script. `base_gain_db` is its normal
+  level; `duck_gain_db` is the lower level it should sit at under narration (a real, if crude,
+  substitute for sidechain compression — see `resolve/audio_design.py` and
+  `resolve_scripting_api.md` for how gain gets applied per-version-dependent Resolve APIs). Pick
+  `loop: true` for anything shorter than the total runtime.
+- **Per-beat `sfx`** is a list (usually empty, sometimes one item, rarely more) of one-shot sounds
+  timed to a specific moment *within* the beat — `at` is seconds from the beat's own `start`, not
+  the timeline's start. Reserve these for the moments the style profile's
+  `sound_design.sfx_triggers` actually names (a semantic cut, a reveal, a punchline) — per
+  `sound_design.sfx_not_on_every_cut`, a sound effect on every single beat reads as noisy and cheap
+  rather than punchy. Query the sound library the same way as visuals:
+  `index_media.py query --kind audio --tags "whoosh,transition" --limit 5`.
+- Silence is a valid choice for both fields. Not every project needs a music bed, and most beats
+  should have an empty `sfx` list — the goal is a few well-placed sounds, not constant coverage.

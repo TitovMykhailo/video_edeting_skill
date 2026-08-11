@@ -72,7 +72,15 @@ mediaPool.SetCurrentFolder(folder)
 mediaPool.ImportMedia([absolute file paths]) -> list[MediaPoolItem]
 mediaPool.CreateEmptyTimeline(name) -> Timeline
 mediaPool.AppendToTimeline([clipInfo, ...]) -> list[TimelineItem]
+timeline.GetTrackCount("audio") -> int
+timeline.AddTrack("audio") -> bool
+timelineItem.GetClipProperty("Frames") -> str/int   # total clip length, used for looping SFX/music
 ```
+
+This skill uses three audio tracks by convention — 1 = narration, 2 = SFX, 3 = music bed —
+created up front via `timeline_build.ensure_audio_tracks(timeline, 3)`, which calls `AddTrack`
+until `GetTrackCount` reaches the target. Keeping them on fixed track numbers makes the project
+easy to read by eye afterward in the Edit page, not just correct.
 
 `clipInfo` dicts for `AppendToTimeline` are how both the audio track (sequential, trimmed
 segments) and the video track (explicit positions, since beats have gaps/overlaps to manage) get
@@ -127,6 +135,46 @@ per-word keyframed reveal. The standard technique:
    hand once. Only reach for it once Tier 1 captions are working end-to-end and the user
    specifically wants the word-pop look — don't attempt it on a first run.
 
+## Color grading (CDL)
+
+```python
+timelineItem.SetCDL({
+    "NodeIndex": "1",
+    "Slope": "1.0 1.0 1.0",       # per-channel R G B, space-separated string, not a list
+    "Offset": "0.0 0.0 0.0",
+    "Power": "1.05 1.05 1.05",
+    "Saturation": "0.92",
+})
+```
+
+`scripts/resolve/color_grade.py` wraps this — it converts a style profile's `color.grade_cdl`
+(plain JSON number lists, see `references/style_profile_schema.md`) into the space-separated
+string format `SetCDL` expects, applies it to every video clip on the timeline, and warns (rather
+than aborting the build) for any clip where `SetCDL` returns falsy. `NodeIndex` targets which
+color node the CDL lands on — `"1"` (the first/only node) is enough for the primary-correction
+style push this skill does; a clip that needs more than that is a case for manual grading, not
+more scripting.
+
+For a fully custom look instead of a CDL push, `timelineItem.SetLUT(nodeIndex, lutPath)` applies a
+.cube LUT file, and `timelineItem.ApplyGradeFromDRX(path, gradeMode)` applies a saved DaVinci grade
+(.drx) — both are reasonable upgrades once a project has a locked-in look worth saving, but neither
+is exercised by this skill's scripts by default.
+
+## Per-clip audio gain (music bed ducking, SFX levels)
+
+```python
+timelineItem.SetProperty("Volume", gain_db)
+```
+
+`scripts/resolve/audio_design.py` uses this to set the music bed's level under narration vs. in
+narration-free stretches, and each SFX cue's individual gain. **This property name is the least
+certain call in this whole skill** — Resolve's scripting API doesn't consistently document
+per-clip gain control across versions, and `audio_design.py` already wraps every call in a
+try/except that prints a clear warning instead of failing the build if it doesn't stick. If you
+see that warning, the fallback is genuinely simple: open the Fairlight page and set the levels by
+ear for the flagged clips — it's a few clicks, not a blocker, and worth doing once by hand rather
+than fighting the scripting API for it.
+
 ## Rendering
 
 ```python
@@ -153,3 +201,10 @@ status = project.GetRenderJobStatus(job_id)
   `"insertAdditionalTracks": True` in the options dict, or the timeline needs to already have at
   least one video/audio track before subtitle import; check the shipped README's exact signature
   for the installed version if the call above doesn't produce a track.
+- `SetCDL` returns `False` for every clip → check the CDL map's values are strings, not numbers or
+  lists (`"1.0 1.0 1.0"`, not `[1.0, 1.0, 1.0]`) — `color_grade.py` already does this conversion,
+  so this usually means a version mismatch worth checking against the shipped README.
+- `AddTrack("audio")` fails / `GetTrackCount` doesn't increase → some Resolve versions cap track
+  count differently or need the timeline to be the *current* timeline (`project.SetCurrentTimeline`)
+  before adding tracks — `build_project.py` already sets it current first; if this still fails,
+  add the third audio track manually in the Edit page once and rerun.

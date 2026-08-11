@@ -1,0 +1,111 @@
+{
+  "name": "nextcore-visual-essay",
+  "description": "Fast-cut, faceless visual-essay style calibrated from a breakdown of the Nextcore YouTube channel: voice-over drives everything, the image changes almost every phrase, typography and metaphor-driven cutaways carry the emotion. Default for a pure-voiceover workflow (no talking head). Copy this file per channel/series instead of editing it in place.",
+
+  "aspect_ratios": {
+    "16:9": { "width": 1920, "height": 1080, "fps": 30 },
+    "9:16": { "width": 1080, "height": 1920, "fps": 30 }
+  },
+
+  "narrative_arc": {
+    "beats_template": [
+      "hook",
+      "visual_contradiction",
+      "thesis",
+      "example",
+      "proof",
+      "abstraction",
+      "escalation",
+      "conclusion"
+    ],
+    "cut_on": "change_of_idea",
+    "notes": "Cut when the sentence's point shifts, not when there's a pause in speech. The first frame doubles as the poster/hook — don't spend it on a logo or intro. Save the strongest emotional/cinematic footage for the escalation beat right before the conclusion, not on a throwaway line."
+  },
+
+  "pacing": {
+    "pause_threshold_s": 0.35,
+    "keep_pause_s": 0.12,
+    "pad_s": 0.04,
+    "remove_filler_words": true,
+    "filler_words": ["um", "uh", "umm", "erm", "хм", "эм", "ээ", "ну"],
+    "max_removed_fraction_warning": 0.4,
+    "min_visual_change_s": 2.5,
+    "shot_duration_by_intent_s": {
+      "pattern_interrupt": [0.4, 1.0],
+      "keyword_meme": [0.8, 1.8],
+      "kinetic_typography": [1.0, 2.5],
+      "illustrative_archival": [1.5, 3.5],
+      "diagram_evidence": [2.0, 5.0],
+      "emotional_footage": [2.0, 5.0]
+    },
+    "media_type_variety_rule": "Prefer switching the underlying media TYPE (face/text/archive/object/UI) between consecutive beats over reusing the same type with a fancier transition — that's what actually resets viewer attention, not the transition itself."
+  },
+
+  "composition": {
+    "layout": "centered",
+    "hierarchy": ["headline_word", "hero_subject", "supporting_symbols"],
+    "rule_of_one": "One dominant idea per frame, readable within about a second. Collage is fine; illegibility is not."
+  },
+
+  "color": {
+    "system": "editorial-contrast",
+    "accent_hex": "#E0212B",
+    "accent_usage": "Headline words, key highlights, underline/arrow accents. Never more than one accent color live on screen at once.",
+    "grade_cdl": {
+      "slope": [1.0, 1.0, 1.0],
+      "offset": [0.0, 0.0, 0.0],
+      "power": [1.05, 1.05, 1.05],
+      "saturation": 0.92
+    },
+    "notes": "Contrast matters more than color count. Footage inserts can run slightly desaturated so they read as 'texture' against cleaner graphic frames. These CDL numbers are a conservative starting push — nudge by eye against a real render."
+  },
+
+  "camera_motion": {
+    "techniques": [
+      "push_in_scale",
+      "position_slide_5_15pct",
+      "mask_reveal",
+      "opacity_reveal",
+      "animated_underline_or_arrow",
+      "parallax_on_stills",
+      "layered_collage_build"
+    ],
+    "avoid": "Flashy 3D transitions that call attention to themselves — motion should sell the content, not the edit."
+  },
+
+  "transitions": {
+    "backbone": "hard_cut",
+    "rule": "The cut itself should be invisible; novelty comes from changing media type, not the transition effect."
+  },
+
+  "captions": {
+    "enabled": true,
+    "max_words_per_chunk": 4,
+    "max_chars_per_chunk": 24,
+    "max_duration_s": 1.8,
+    "break_on_punctuation": true,
+    "case": "sentence",
+    "semantic_highlighter": true,
+    "style_notes": "Bold sans-serif, white with dark outline or soft drop shadow, bottom-center or lower-third. Text is a semantic highlighter, not subtitles-everywhere: one phrase -> one key word -> one typography event. Occasional single accent-color word for emphasis. Word-by-word pop-in is a Tier 2 upgrade — see references/resolve_scripting_api.md."
+  },
+
+  "sound_design": {
+    "voice": { "style": "dry, front of the mix", "compression": "moderate", "de_essing": "light" },
+    "music_bed": { "role": "supports pacing, must never compete with the VO", "ducking": "lower under narration — see references/beat_plan_schema.md music_bed field" },
+    "sfx_triggers": ["semantic_cut", "new_evidence_reveal", "big_number_reveal", "punchline"],
+    "sfx_not_on_every_cut": true
+  },
+
+  "media": {
+    "meme_frequency_cap_s": 90,
+    "beat_min_duration_s": 1.0,
+    "beat_max_duration_s": 6.0,
+    "filler_categories": ["ambient", "typing", "abstract-motion", "screen-recording"],
+    "quality_min_height_px": 720
+  },
+
+  "render": {
+    "preset": "H.264 Master",
+    "format": "mp4"
+  }
+}
