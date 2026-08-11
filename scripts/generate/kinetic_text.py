@@ -121,11 +121,19 @@ def render_frame(width, height, bg, lines, font, fg, accent, accent_words, scale
             color = accent if accent and word.strip(".,!?").upper() in accent_words else fg
             color_a = color + (int(255 * alpha),) if len(color) == 3 else color
 
-            if scale != 1.0:
+            if scale != 1.0 or alpha < 1.0:
                 # Render the word onto its own layer (padded 2x so nothing clips during
                 # upscaling), then paste it back centered on the word's own unscaled center —
                 # not anchored to the layer's top-left corner, which would silently drift the
                 # word sideways by half its own width for any scale other than exactly 1.0.
+                # Also required whenever alpha < 1.0, even at scale == 1.0: Pillow's ImageDraw.text
+                # silently ignores the alpha component of `fill` when drawing straight onto an RGB
+                # (non-RGBA) canvas — solid glyph pixels come out fully opaque regardless of the
+                # requested alpha, verified empirically. Alpha only actually blends when text is
+                # drawn onto an RGBA layer and composited via paste(), as done here. (In practice
+                # this file's scale and alpha formulas both reach 1.0 on the same frame, so the
+                # bug was never visible — but that's a coincidence of the current easing constants,
+                # not a guarantee, so both conditions are checked explicitly rather than relying on it.)
                 word_bbox = draw.textbbox((0, 0), word, font=font)
                 word_w, word_h = word_bbox[2] - word_bbox[0], word_bbox[3] - word_bbox[1]
                 layer = Image.new("RGBA", (int(word_w * 2), int(word_h * 2)), (0, 0, 0, 0))

@@ -65,42 +65,44 @@ def main():
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch()
-            page = browser.new_page(viewport={"width": args.width, "height": args.height})
-            url = f"file://{html_path}"
-            if args.transparent:
-                # scenes can read this to skip painting their own background fill — see the
-                # convention documented in assets/generated-templates/example_scene.html
-                url += "?transparent=1"
-            page.goto(url)
+            try:
+                page = browser.new_page(viewport={"width": args.width, "height": args.height})
+                url = f"file://{html_path}"
+                if args.transparent:
+                    # scenes can read this to skip painting their own background fill — see the
+                    # convention documented in assets/generated-templates/example_scene.html
+                    url += "?transparent=1"
+                page.goto(url)
 
-            has_seek_to = page.evaluate("typeof window.seekTo === 'function'")
-            if not has_seek_to:
-                print(
-                    f"ERROR: {html_path} does not define window.seekTo(t) — see "
-                    "references/code_generated_frames.md for the required convention.",
-                    file=sys.stderr,
-                )
-                browser.close()
-                sys.exit(1)
-
-            has_ready_flag = page.evaluate("typeof window.sceneReady !== 'undefined'")
-            if has_ready_flag:
-                try:
-                    page.wait_for_function("window.sceneReady === true", timeout=args.ready_timeout_ms)
-                except Exception:  # noqa: BLE001 — a timeout here shouldn't be a cryptic Playwright stack trace
+                has_seek_to = page.evaluate("typeof window.seekTo === 'function'")
+                if not has_seek_to:
                     print(
-                        f"WARNING: window.sceneReady never became true within {args.ready_timeout_ms}ms — "
-                        "rendering anyway, but frames may show an unloaded/incomplete scene.",
+                        f"ERROR: {html_path} does not define window.seekTo(t) — see "
+                        "references/code_generated_frames.md for the required convention.",
                         file=sys.stderr,
                     )
+                    sys.exit(1)
 
-            for i in range(total_frames):
-                t = i / args.fps
-                page.evaluate(f"window.seekTo({t})")
-                frame_path = os.path.join(tmp_dir, f"frame_{i:05d}.png")
-                page.screenshot(path=frame_path, omit_background=args.transparent)
+                has_ready_flag = page.evaluate("typeof window.sceneReady !== 'undefined'")
+                if has_ready_flag:
+                    try:
+                        page.wait_for_function("window.sceneReady === true", timeout=args.ready_timeout_ms)
+                    except Exception:  # noqa: BLE001 — a timeout here shouldn't be a cryptic Playwright stack trace
+                        print(
+                            f"WARNING: window.sceneReady never became true within {args.ready_timeout_ms}ms — "
+                            "rendering anyway, but frames may show an unloaded/incomplete scene.",
+                            file=sys.stderr,
+                        )
 
-            browser.close()
+                for i in range(total_frames):
+                    t = i / args.fps
+                    page.evaluate(f"window.seekTo({t})")
+                    frame_path = os.path.join(tmp_dir, f"frame_{i:05d}.png")
+                    page.screenshot(path=frame_path, omit_background=args.transparent)
+            finally:
+                # always close, even if goto/evaluate/screenshot raised or window.seekTo was
+                # missing — otherwise an error path leaves an orphaned Chromium process behind
+                browser.close()
 
         if args.frames_only:
             print(f"Wrote {total_frames} frames to {tmp_dir} (--frames-only, no encode).")

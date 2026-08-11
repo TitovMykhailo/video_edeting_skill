@@ -66,6 +66,11 @@ def build_sfx_track(media_pool, timeline, beat_plan, sfx_item_by_path, fps, trac
     if not clip_infos:
         return []
 
+    # AppendToTimeline's return order isn't formally documented either, but unlike ImportMedia
+    # (matching arbitrary files, order not inherent to the operation) this call is placing an
+    # explicitly ordered/positioned sequence via recordFrame — there's no batch to reorder. Treated
+    # as safe to zip positionally on that basis; if gains ever land on the wrong SFX clip, this
+    # assumption is the first thing to re-check.
     gains = [c.pop("_gain_db") for c in clip_infos]
     result = media_pool.AppendToTimeline(clip_infos) or []
     for item, gain_db in zip(result, gains):

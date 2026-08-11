@@ -7,6 +7,7 @@ instead of drifting by a frame each cut.
 """
 import math
 import os
+import sys
 
 
 def to_frame(seconds, fps):
@@ -31,22 +32,42 @@ def ensure_audio_tracks(timeline, count):
 
 
 def import_into_bin(media_pool, folder, abs_paths, cache):
-    """Import files not already in `cache` (abs_path -> MediaPoolItem), into `folder`."""
+    """Import files not already in `cache` (abs_path -> MediaPoolItem), into `folder`.
+
+    Matches each returned MediaPoolItem back to the path that produced it by its actual
+    `File Path` clip property (basename), rather than assuming `ImportMedia`'s return list is in
+    the same order as the input list — that ordering isn't part of the documented contract, and
+    pairing by position would silently cache the wrong item for a path (wrong footage/audio
+    placed on the timeline later) if Resolve ever returns them out of order.
+    """
     to_import = [p for p in abs_paths if p not in cache]
     if to_import:
         media_pool.SetCurrentFolder(folder)
         items = media_pool.ImportMedia(to_import)
         if items is None:
             items = []
-        if len(items) != len(to_import):
-            imported_names = {os.path.basename(i.GetClipProperty("File Path")) for i in items} if items else set()
-            missing = [p for p in to_import if os.path.basename(p) not in imported_names]
+
+        by_basename = {}
+        for item in items:
+            try:
+                file_path = item.GetClipProperty("File Path")
+            except Exception:  # noqa: BLE001 — fall back to "unmatched" below rather than aborting the whole import
+                file_path = None
+            by_basename.setdefault(os.path.basename(file_path) if file_path else None, []).append(item)
+
+        missing = []
+        for path in to_import:
+            candidates = by_basename.get(os.path.basename(path))
+            if candidates:
+                cache[path] = candidates.pop(0)
+            else:
+                missing.append(path)
+
+        if missing:
             raise RuntimeError(
                 f"Resolve only imported {len(items)}/{len(to_import)} files into '{folder.GetName()}'. "
                 f"Likely missing/unreadable: {missing}"
             )
-        for path, item in zip(to_import, items):
-            cache[path] = item
     return cache
 
 
@@ -78,10 +99,6 @@ def build_audio_track(media_pool, timeline, narration_item, keep_segments, fps, 
             "its actual duration."
         )
     return result
-
-
-def _clip_duration_frames(beat_media, fps):
-    return to_frame(beat_media["src_out"], fps) - to_frame(beat_media["src_in"], fps)
 
 
 def build_video_track(media_pool, timeline, beat_plan, media_item_by_path, fps, track_index=1):
@@ -122,7 +139,20 @@ def build_video_track(media_pool, timeline, beat_plan, media_item_by_path, fps, 
                 )
         else:
             # clip runs once; if it's longer than the beat, trim to the beat's length instead
-            # of overrunning into the next beat
+            # of overrunning into the next beat. If it's SHORTER and not looping, this only
+            # places the clip's own natural length — the remainder of the beat is left empty on
+            # the video track (Resolve has no scripting call this repo relies on for freeze-
+            # framing a clip's last frame to fill extra time), not held on the last frame. Flag it
+            # rather than let a silent black gap show up as a surprise in the render.
+            if clip_len < beat_len_frames:
+                print(
+                    f"WARNING: beat at {beat['start']}s uses '{media['path']}' ({clip_len} frames) "
+                    f"which is shorter than the beat ({beat_len_frames} frames) and isn't set to "
+                    "loop — the video track will have an empty gap for the remainder of this beat. "
+                    'Set `"loop": true` on this beat\'s media, trim the beat to the clip\'s length, '
+                    "or pick a longer clip.",
+                    file=sys.stderr,
+                )
             this_len = min(clip_len, beat_len_frames)
             clip_infos.append(
                 {

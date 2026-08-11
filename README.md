@@ -4,11 +4,22 @@ A Claude Code skill that turns a raw voiceover recording into a fast-cut, meme/b
 captioned edit inside DaVinci Resolve — automatically. You give it a narration recording (plus
 an optional script), and it transcribes, trims silence and filler words without ever cutting a
 word in half, writes punchy synced captions, picks emotionally/contextually matching clips for
-each sentence from your own media library (or free stock), places sound effects and a music bed
-matched to each beat, applies a color grade matched to the chosen style, and assembles all of it
-into a DaVinci Resolve project it renders a draft from. Two starting style profiles — a fast-cut
-faceless visual-essay style and a talking-head/screen-demo creator style — are calibrated from
-real channel editing-grammar breakdowns (shot durations by intent, composition, color, sound).
+each sentence from your own media library (free stock, or code-generated frames — kinetic
+typography, charts, custom motion graphics — when nothing found fits), places sound effects and a
+music bed matched to each beat, applies a color grade matched to the chosen style, and assembles
+all of it into a DaVinci Resolve project it renders a draft from. Two starting style profiles — a
+fast-cut faceless visual-essay style and a talking-head/screen-demo creator style — are calibrated
+from real channel editing-grammar breakdowns (shot durations by intent, composition, color, sound),
+and a small overlay system lets you refine either one for a specific cut (a Shorts version, a
+one-off episode tweak) without forking the whole profile.
+
+Two capabilities work without DaVinci Resolve at all, anywhere: **critiquing** an existing edit's
+cinematography/sound design, and **designing** a video/storyboard from scratch (a shot list + audio
+map) using the same director/editor-level judgment. For projects where the visual/audio craft needs
+to go beyond a good auto-cut — real hero moments, frame-accurate timing, a piece meant to survive a
+critique-and-revise pass — the skill also carries a full "video editor" discipline (not just
+creative direction): timeline-integrity validation, eye-target/motion-continuity modeling, a named
+humor-technique taxonomy, and honest confidence scoring instead of invented precision.
 
 Full workflow, pipeline stages, and file schemas live in [`SKILL.md`](./SKILL.md) — that's the
 file Claude actually reads when this skill triggers. Everything below is just human-facing setup.
@@ -50,12 +61,19 @@ Fix whatever it flags (it prints exact commands / env vars per OS — see
 ```
 SKILL.md                    the skill itself — read this first
 scripts/                     the deterministic pipeline stages (transcribe, cut planning,
-                                 captions, media/sound indexing, stock fetch) + DaVinci Resolve
-                                 automation in scripts/resolve/ (tracks, captions, color grade,
-                                 sound design, render)
-references/                 schemas + the Resolve scripting API cheat sheet
+                                 captions, media/sound indexing, stock fetch, timeline validation,
+                                 style-profile overlay merging) + two optional subsystems:
+  resolve/                     DaVinci Resolve automation (tracks, captions, color grade,
+                                   sound design, render) — needs a local running Resolve
+  generate/                    code-generated frames when no found clip fits (kinetic
+                                   typography, charts, arbitrary HTML/CSS/JS motion graphics)
+references/                 schemas (style profile, beat plan, media tagging) + the judgment
+                                 layer (cinematic_principles.md, editor_discipline.md) + the
+                                 Resolve scripting API cheat sheet + code-generated-frames guide
 assets/style-profiles/       nextcore-visual-essay.json (default, faceless voiceover style) and
-                                 honeymontana-creator-led.json (talking-head style) — copy per channel
+                                 honeymontana-creator-led.json (talking-head style) — copy per
+                                 channel, or refine either with a small overlay/ patch instead
+                                 (see overlays/shorts.json for the worked example)
 config.example.json          copy to config.json and fill in your media/sound library paths / keys
 ```
 

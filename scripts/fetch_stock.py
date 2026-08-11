@@ -70,7 +70,7 @@ def search_pexels(query, media_type, limit, key):
     else:
         url = "https://api.pexels.com/v1/search"
     resp = requests.get(
-        url, headers={"Authorization": key}, params={"query": query, "per_page": limit}, timeout=20
+        url, headers={"Authorization": key}, params={"query": query, "per_page": min(limit, 80)}, timeout=20
     )
     resp.raise_for_status()
     data = resp.json()
@@ -112,7 +112,7 @@ def search_pixabay(query, media_type, limit, key):
     import requests
 
     url = "https://pixabay.com/api/videos/" if media_type == "video" else "https://pixabay.com/api/"
-    resp = requests.get(url, params={"key": key, "q": query, "per_page": max(limit, 3)}, timeout=20)
+    resp = requests.get(url, params={"key": key, "q": query, "per_page": min(max(limit, 3), 200)}, timeout=20)
     resp.raise_for_status()
     data = resp.json()
 

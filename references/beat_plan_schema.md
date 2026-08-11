@@ -154,8 +154,12 @@ Guidance on filling this in:
   explainer edits are mostly filler with meme/illustrative beats punctuating it, not the reverse.
 - **`media.src_in`/`src_out`** trim the *source clip*, independent of the beat's own duration —
   if the clip is longer than the beat, pick the best-fitting moment inside it rather than always
-  starting at 0; if it's shorter, either loop it (`"loop": true`) or accept it running once and
-  holding last frame, per what looks natural for that clip.
+  starting at 0; if it's shorter, set `"loop": true` to repeat it for the rest of the beat.
+  `resolve/timeline_build.py` does not freeze-frame a clip's last frame to fill the remainder —
+  a shorter clip left without `loop: true` plays once and leaves the rest of the beat as an empty
+  gap on the video track (the build script prints a warning when this happens). Loop, trim the
+  beat's own `end` down to the clip's actual length, or pick a longer clip — don't rely on a hold
+  that isn't actually implemented.
 - Update `out/recent_uses.json` (a flat list of media paths) as you go, and consult it — a clip
   used in the last `media.meme_frequency_cap_s` seconds of runtime should be deprioritized unless
   it's a deliberate running gag. Track sound picks in the same file, alongside visual ones, so a

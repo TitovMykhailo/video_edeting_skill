@@ -14,11 +14,15 @@ def ensure_project(project_manager, name):
 
 
 def set_timeline_format(project, width, height, fps):
-    ok = True
-    ok &= project.SetSetting("timelineResolutionWidth", str(width))
-    ok &= project.SetSetting("timelineResolutionHeight", str(height))
-    ok &= project.SetSetting("timelineFrameRate", str(fps))
-    if not ok:
+    # collected as a list and checked with all() rather than accumulated with `ok &= ...` —
+    # SetSetting isn't guaranteed to return a real bool (e.g. None on some versions), and `&=`
+    # against a non-bool/non-int raises TypeError instead of just failing the check
+    results = [
+        project.SetSetting("timelineResolutionWidth", str(width)),
+        project.SetSetting("timelineResolutionHeight", str(height)),
+        project.SetSetting("timelineFrameRate", str(fps)),
+    ]
+    if not all(results):
         raise RuntimeError(
             f"Resolve rejected one of the timeline format settings ({width}x{height}@{fps}). "
             "This can happen if fps isn't one Resolve considers valid — try a standard value "

@@ -261,9 +261,9 @@ higher bar.
 ### 6. Build it in Resolve and render
 
 ```bash
-python3 scripts/resolve/build_project.py --project-name "<name>" --edit-plan out/edit_plan.json \
-  --beat-plan out/beat_plan.json --captions out/captions.srt --style style.json \
-  --aspect 16:9 --media-library <path-to-library> --sound-library <path-to-library> \
+python3 scripts/resolve/build_project.py --project-name "<name>" --narration-audio narration.wav \
+  --edit-plan out/edit_plan.json --beat-plan out/beat_plan.json --captions out/captions.srt \
+  --style style.json --aspect 16:9 --media-library <path-to-library> --sound-library <path-to-library> \
   --render-out out/render.mp4
 ```
 

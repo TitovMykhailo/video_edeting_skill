@@ -112,7 +112,11 @@ def main():
 
     gaps, overlaps = find_gaps_and_overlaps(beats, expected_duration)
     unassigned = round(sum(g["duration"] for g in gaps), 3)
-    actual_runtime = round(beats[-1]["end"], 3) if beats else 0.0
+    # max(), not beats[-1]["end"]: beats is sorted by start, and a beat that starts later doesn't
+    # necessarily end later (an overlapping/nested beat breaks that assumption) — using the last
+    # element by start would silently under-report the real runtime in exactly the malformed-plan
+    # cases this validator exists to catch.
+    actual_runtime = round(max(b["end"] for b in beats), 3) if beats else 0.0
 
     missing_segments, duplicated_segments = ([], [])
     if args.script:

@@ -28,9 +28,10 @@ Every beat plan has one of two timing bases, and it must say which:
   invent frame counts or millisecond offsets in this mode — "the text appears roughly on the
   stressed word" is honest; "text appears at frame 47" is not, if there's no real frame 47 yet.
 
-Run `scripts/validate_timeline.py` before treating either kind of beat plan as final — see Part 12.
-Timing basis being provisional doesn't excuse gaps/overlaps/missing coverage; it only limits how
-precise the individual numbers are allowed to claim to be.
+Run `scripts/validate_timeline.py` before treating either kind of beat plan as final — see
+`beat_plan_schema.md`'s "Timing validation" section. Timing basis being provisional doesn't excuse
+gaps/overlaps/missing coverage; it only limits how precise the individual numbers are allowed to
+claim to be.
 
 ## 2. Attention: model where the eye actually is
 

@@ -69,12 +69,19 @@ project.SetSetting("timelineFrameRate", str(fps))
 mediaPool.GetRootFolder()
 mediaPool.AddSubFolder(parentFolder, name)
 mediaPool.SetCurrentFolder(folder)
-mediaPool.ImportMedia([absolute file paths]) -> list[MediaPoolItem]
+mediaPool.ImportMedia([absolute file paths]) -> list[MediaPoolItem]   # order not documented as
+                                                                            # matching the input list — match
+                                                                            # returned items back to paths by
+                                                                            # GetClipProperty("File Path"),
+                                                                            # not by position (see import_into_bin)
 mediaPool.CreateEmptyTimeline(name) -> Timeline
 mediaPool.AppendToTimeline([clipInfo, ...]) -> list[TimelineItem]
 timeline.GetTrackCount("audio") -> int
 timeline.AddTrack("audio") -> bool
-timelineItem.GetClipProperty("Frames") -> str/int   # total clip length, used for looping SFX/music
+mediaPoolItem.GetClipProperty("Frames") -> str/int   # total clip length, used for looping SFX/music —
+                                                            # this is a MediaPoolItem call (the object
+                                                            # ImportMedia/the import cache returns), not
+                                                            # a TimelineItem one
 ```
 
 This skill uses three audio tracks by convention — 1 = narration, 2 = SFX, 3 = music bed —
@@ -94,6 +101,9 @@ built:
     "trackIndex": 1,                  # 1-based
     "recordFrame": int,             # where on the TIMELINE this lands, in frames — omit to
                                         # append sequentially after whatever's already there
+    "mediaType": 1,                   # 1 = video, 2 = audio — every clipInfo dict this skill
+                                        # builds sets this explicitly, see timeline_build.py /
+                                        # audio_design.py
 }
 ```
 
