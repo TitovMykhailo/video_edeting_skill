@@ -3,7 +3,11 @@
 These are the data shapes that flow between pipeline stages. `transcript.json` and
 `edit_plan.json`/`captions.json` are produced by scripts. `beat_plan.json` is produced by you
 (Claude), reasoning over the others — there's no script for it because picking the right clip for
-a sentence is a judgment call, not arithmetic.
+a sentence is a judgment call, not arithmetic. `references/editor_discipline.md` is the judgment
+framework behind the fields marked "Layer B" below (eye targets, motion continuity, cut function,
+novelty, confidence) — read it before filling those in for a project where that level of rigor
+actually matters, and always run `scripts/validate_timeline.py` against the finished beat plan
+before treating it as final (see "Timeline validation" below).
 
 ## `transcript.json` (from `transcribe.py`, or hand-built from an existing SRT/VTT)
 
@@ -70,6 +74,9 @@ All timing here is already on the new (post-cut) timeline.
 
 ```jsonc
 {
+  "timing_basis": "audio_derived",   // "audio_derived" | "provisional" — see references/editor_discipline.md Part 1.
+                                          // "provisional" means no real narration audio exists yet; every start/end
+                                          // below is an estimate, not a measurement, and must be treated as such.
   "music_bed": {
     "path": "music/lofi-bed-01.mp3",
     "loop": true,
@@ -94,6 +101,18 @@ All timing here is already on the new (post-cut) timeline.
       ],
       "shot_size": "close_up",              // optional, see "Richer shot design fields" below
       "attention_note": "eyes are the sole focal point, nothing else competes",   // optional
+      "eye_target": {                          // optional Layer B field — see editor_discipline.md Part 2
+        "primary": { "x": 0.5, "y": 0.45 },
+        "secondary": null
+      },
+      "motion": {                                // optional — Part 3
+        "direction": "static",
+        "continuity": "n/a",                       // "continue" | "break" | "static" | "n/a"
+        "note": "held shot, no motion to continue or break"
+      },
+      "cut_function": "comedy",                // optional — Part 19: information|energy|comedy|emotion|continuity|surprise|relief|beauty|orientation
+      "novelty_score": 8,                        // optional, 1-10 relative to the previous shot — Part 12
+      "confidence": 78,                          // optional, 0-100 — Part 27. Below 60, add a `candidates` array.
       "reasoning": "one sentence on why this clip, for your own future reference / debugging"
     },
     {
@@ -103,6 +122,11 @@ All timing here is already on the new (post-cut) timeline.
       "intent": "illustrative",
       "media": { "path": "...", "src_in": 2.0, "src_out": 6.3, "loop": false },
       "sfx": [],
+      "candidates": [                          // optional — only for beats worth trying multiple approaches (Part 23)
+        { "label": "A - restrained", "media": { "path": "...", "src_in": 0.0, "src_out": 3.0 }, "confidence": 74 },
+        { "label": "B - aggressive", "media": { "path": "...", "src_in": 0.0, "src_out": 3.0 }, "confidence": 55 },
+        { "label": "C - unconventional", "media": null, "note": "no visual — let the music drop out instead", "confidence": 62 }
+      ],
       "reasoning": "..."
     }
   ]
@@ -172,3 +196,51 @@ design/storyboard deliverable rather than the automated pipeline (see `cinematic
 shot-by-shot analysis format, which these fields are a lightweight version of). For a routine
 fast-turnaround edit, `intent`/`media`/`reasoning` are enough — don't pad every beat with fields
 that don't change the outcome.
+
+### Machine-readable execution fields ("Layer B" — optional, for full editor-discipline rigor)
+
+`eye_target`, `motion`, `cut_function`, `novelty_score`, `confidence`, and `candidates` exist so a
+beat plan can eventually drive a real timeline (Premiere/Resolve/ffmpeg) without an executor having
+to re-derive intent from prose — see `references/editor_discipline.md` Part 31. Same rule as the
+richer shot-design fields above: fill these in when the project actually warrants full rigor (a
+hero-moment-dense piece, anything going through the critique loop, anything the user explicitly
+wants at "full production treatment" depth), not as a mandatory checklist for every routine cut.
+
+- **`eye_target`** — normalized `x`/`y` (0–1, origin top-left) for where the shot's primary (and
+  optionally secondary) focal point sits. Comparing consecutive beats' `eye_target` values is what
+  turns "continuity vs. pattern interruption" from a vibe into a checkable decision — see
+  `editor_discipline.md` Part 2.
+- **`motion`** — `direction` (e.g. `"left_to_right"`, `"push_in"`, `"static"`), `continuity`
+  (does the *next* beat continue this motion, deliberately break/reverse it, or is it not
+  applicable), and a one-line `note` on why. Part 3.
+- **`cut_function`** — one of `information | energy | comedy | emotion | continuity | surprise |
+  relief | beauty | orientation`. If a beat's cut doesn't fit any of these, that's a signal to
+  reconsider whether the beat needs to exist — Part 19.
+- **`novelty_score`** — 1–10, relative to the *previous* beat, not an absolute rating. Used to spot
+  a flatline (constant 9s) or check that a deliberate lull before a hero moment actually reads as
+  low-novelty. Part 12.
+- **`confidence`** — 0–100 on the beat's creative call (not on whether the JSON is well-formed).
+  82+ ships as-is; 60–81 gets flagged for a render check; below 60 should come with a `candidates`
+  array instead of a single unhedged choice. Part 27.
+- **`candidates`** — an array of alternative approaches for a beat worth trying multiple ideas on
+  (typically hero moments or anything below the 60-confidence threshold), each with its own `label`
+  (e.g. `"A - restrained"`), its own media/approach, and its own `confidence`. Part 23. Picking
+  between them is still your judgment call — the array records that the alternatives were actually
+  considered, not just the winner.
+
+### Timing validation
+
+Before treating any `beat_plan.json` as final, run:
+
+```bash
+python3 scripts/validate_timeline.py --beat-plan out/beat_plan.json \
+  --edit-plan out/edit_plan.json --script script.txt --out out/timeline_validation.json
+```
+
+(Swap `--edit-plan` for `--expected-duration <seconds>` on a `"provisional"` timing-basis project
+that has no real `edit_plan.json` yet.) This checks the beat plan actually has full, non-overlapping
+temporal ownership of the narration — no gaps, no overlaps, no script segments left unassigned or
+covered twice. `expected_runtime_s`, `unassigned_vo_duration_s`, `timeline_gaps`, and
+`unintentional_overlaps` should all come back empty/zero; `status` should read `PASS`. If it
+doesn't, fix the beat plan and rerun rather than shipping a plan you know has a hole in it — see
+`references/editor_discipline.md`'s "timeline integrity is non-negotiable" framing.

@@ -228,6 +228,36 @@ the results to judge fit (a `percussive` one-shot for a cut accent, a `sustained
 for a bed). Write the final per-beat decisions, including `sfx` and the top-level `music_bed`,
 to `out/beat_plan.json` in the schema doc's format (`references/beat_plan_schema.md`).
 
+**Before this beat plan is "done," two more things are non-negotiable — see
+`references/editor_discipline.md` for the full reasoning behind both:**
+
+1. **Mark `timing_basis` honestly.** If real narration audio was transcribed (step 1), every
+   `start`/`end` is `"audio_derived"` and can carry precise numbers. If there's no real audio yet
+   (a from-scratch design pass, or planning ahead of recording), it's `"provisional"` — every
+   duration is an estimate, and nothing downstream (an anticipation window, a frame-accurate glitch
+   length, an exact millisecond offset) should be stated with more precision than that estimate
+   actually supports. Don't invent frame-accurate numbers to sound rigorous when the underlying
+   timing is a guess.
+2. **Run the timeline validator before treating the plan as final:**
+   ```bash
+   python3 scripts/validate_timeline.py --beat-plan out/beat_plan.json \
+     --edit-plan out/edit_plan.json --script script.txt --out out/timeline_validation.json
+   ```
+   (use `--expected-duration <seconds>` instead of `--edit-plan` on a provisional-timing project).
+   Every beat must own some piece of the narration — no gaps, no overlaps, no script line left
+   uncovered or covered twice. Fix and rerun until `status` is `PASS` before moving to step 6.
+
+For a project where the visual/audio craft needs to go beyond "good auto-cut" — genuine hero
+moments, real humor design, a piece that should survive a critique-and-revise pass — read
+`references/editor_discipline.md` in full before finishing the beat plan. It covers eye-target
+modeling, motion continuity, speech-structure-driven cut timing, a full humor-technique taxonomy,
+and the machine-readable "Layer B" fields (`eye_target`/`motion`/`cut_function`/`novelty_score`/
+`confidence`/`candidates`) documented in `beat_plan_schema.md`. It's the difference between
+planning like a creative director (concepts, mood, motifs) and planning like the video editor who
+actually has to cut frame-accurate media against the plan — use the lighter `cinematic_principles.md`
+framework for a fast turnaround, and the full `editor_discipline.md` pass when the user wants that
+higher bar.
+
 ### 6. Build it in Resolve and render
 
 ```bash
