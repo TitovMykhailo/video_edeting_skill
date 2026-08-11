@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  Minimal runnable example of the window.seekTo(t) contract that
+  scripts/generate/render_html_motion.py depends on. Copy this file as a starting point rather
+  than editing it in place — see references/code_generated_frames.md for how to swap the plain
+  Canvas drawing below for p5.js, GSAP, anime.js, D3, or Lottie instead.
+
+  The contract, in three parts:
+    1. window.sceneReady        — set true once anything async (fonts, a Lottie JSON fetch, an
+                                       image) has finished loading. The renderer waits for this
+                                       before capturing any frames. Fine to leave it `true`
+                                       immediately (as below) for a scene with nothing to await.
+    2. window.seekTo(t)          — draw the scene's exact state at t seconds. Called once per
+                                       frame with an increasing t; must be deterministic (calling
+                                       it twice with the same t must draw the same thing) since
+                                       frames are captured out of real time, not during playback.
+    3. A transparent <body> (only if you'll render with --transparent) — the renderer's own
+                                       background is already transparent; an opaque body/canvas
+                                       fill would still hide it.
+    4. (optional) Read `?transparent=1` from the URL query string — render_html_motion.py appends
+                                       it when --transparent is passed, so a scene that wants to
+                                       paint its own opaque background by default (like this one —
+                                       otherwise a plain, non-transparent capture just shows
+                                       whatever's behind the page, usually flat white) knows to
+                                       skip that fill when it's actually meant to composite as an
+                                       overlay instead.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<script>
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  const isTransparent = new URLSearchParams(location.search).get('transparent') === '1';
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Nothing async to wait for in this example — set true immediately. A scene loading a font or
+  // a Lottie JSON file would flip this to true inside that load's .then()/callback instead.
+  window.sceneReady = true;
+
+  // --- The only function the renderer actually calls. Everything above is just setup. ---
+  window.seekTo = function (t) {
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!isTransparent) {
+      // Not compositing as an overlay this time — paint our own background so a plain capture
+      // looks complete on its own instead of showing whatever's behind a transparent page (flat
+      // white by default).
+      ctx.fillStyle = '#0A0A0A';
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // Simple deterministic motion: a circle sweeps left-to-right over 2 seconds and eases into
+    // place, then a label fades in — swap this body for a p5.js redraw(), a GSAP
+    // timeline.seek(t), a D3 transition driven by t, etc. The contract only cares that calling
+    // seekTo(t) leaves the canvas showing exactly what the scene looks like at that timestamp.
+    const duration = 2.0;
+    const progress = Math.min(1, t / duration);
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+
+    const x = w * 0.15 + (w * 0.7) * eased;
+    const y = h / 2;
+    const radius = h * 0.08;
+
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#E0212B';
+    ctx.fill();
+
+    const labelAlpha = Math.max(0, Math.min(1, (t - 1.2) / 0.5));
+    if (labelAlpha > 0) {
+      ctx.globalAlpha = labelAlpha;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `bold ${Math.floor(h * 0.09)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('LIKE THIS', w / 2, h * 0.8);
+      ctx.globalAlpha = 1;
+    }
+  };
+
+  // Draw an initial frame so the scene isn't blank before the renderer calls seekTo() the first
+  // time (harmless for the renderer, but useful when opening this file directly in a browser to
+  // preview it while authoring).
+  window.seekTo(0);
+</script>
+</body>
+</html>

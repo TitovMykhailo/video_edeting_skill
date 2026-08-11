@@ -1,5 +1,12 @@
 faster-whisper>=1.0.0
 requests>=2.31.0
+Pillow>=10.0.0
+matplotlib>=3.7.0
+
+# Optional, only needed for scripts/generate/render_html_motion.py (the general-purpose
+# code-generated-frames tier — see references/code_generated_frames.md). Skip this unless that
+# tier is actually used; kinetic_text.py and chart.py cover the common cases without it.
+#   pip3 install playwright && playwright install chromium
 
 # NOT pip-installable: the DaVinci Resolve scripting module (DaVinciResolveScript.py) ships
 # inside the Resolve app install. scripts/resolve/connect.py locates it via the

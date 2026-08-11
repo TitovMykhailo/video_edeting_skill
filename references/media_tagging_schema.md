@@ -30,6 +30,7 @@ same scan/write-tags/query workflow; `scripts/index_media.py` keeps one file at 
       "quality_ok": true,
       "quality_notes": "",
       "source": "own_library",                         // "own_library" | "stock:pexels" | "stock:pixabay" | "stock:giphy"
+                                                            // | "generated:kinetic_text" | "generated:chart" | "generated:html_motion"
       "energy": null,                                     // audio-only, see below
       "loopable": null,                                    // audio-only
       "tempo_bpm": null,                                  // audio-only
@@ -141,3 +142,12 @@ There's deliberately no `fetch_stock.py`-equivalent for audio: free stock-audio 
 standardized commercial-use terms are less consistent than Pexels/Pixabay for video, so this skill
 doesn't automate sourcing SFX/music. Build the sound library from whatever the user already owns
 or licenses, and tag it the same way as everything else.
+
+## Generated sources (`scripts/generate/`)
+
+A fourth source alongside your own library and stock: a clip drawn by code instead of found —
+kinetic typography, a chart, or a custom motion-graphic scene. Tag these with
+`"source": "generated:<tool>"` (`kinetic_text` / `chart` / `html_motion`) rather than
+`own_library`, so it's obvious later that the clip can be cheaply *regenerated* with different
+text/data/duration instead of needing to be replaced by a found one. See
+`references/code_generated_frames.md` for when to reach for this and how each generator works.

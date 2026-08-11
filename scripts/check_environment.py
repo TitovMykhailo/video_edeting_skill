@@ -31,6 +31,23 @@ def check_ffmpeg():
     return {"name": "ffmpeg/ffprobe", "ok": ok, "fix": fix}
 
 
+def check_frame_generation_deps():
+    missing = []
+    for module, package in (("PIL", "Pillow"), ("matplotlib", "matplotlib")):
+        try:
+            __import__(module)
+        except ImportError:
+            missing.append(package)
+    if missing:
+        return {
+            "name": "frame generation (Pillow/matplotlib)",
+            "ok": False,
+            "critical": False,
+            "fix": f"pip3 install {' '.join(missing)}   # only needed for scripts/generate/kinetic_text.py and chart.py",
+        }
+    return {"name": "frame generation (Pillow/matplotlib)", "ok": True, "critical": False, "fix": None}
+
+
 def check_faster_whisper():
     try:
         import faster_whisper  # noqa: F401
@@ -134,14 +151,20 @@ def main():
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON only")
     args = parser.parse_args()
 
-    checks = [check_resolve(), check_ffmpeg(), check_faster_whisper()]
-    all_ok = all(c["ok"] for c in checks)
+    checks = [check_resolve(), check_ffmpeg(), check_faster_whisper(), check_frame_generation_deps()]
+    critical_checks = [c for c in checks if c.get("critical", True)]
+    all_ok = all(c["ok"] for c in critical_checks)
 
     if args.json:
         print(json.dumps({"ok": all_ok, "checks": checks}, indent=2))
     else:
         for c in checks:
-            status = "OK" if c["ok"] else "MISSING"
+            if c["ok"]:
+                status = "OK"
+            elif c.get("critical", True):
+                status = "MISSING"
+            else:
+                status = "OPTIONAL, MISSING"
             line = f"[{status}] {c['name']}"
             if c.get("detail"):
                 line += f" ({c['detail']})"
@@ -149,7 +172,7 @@ def main():
             if not c["ok"] and c.get("fix"):
                 print(f"        fix: {c['fix']}")
         print()
-        print("All checks passed." if all_ok else "Fix the items above before continuing.")
+        print("All checks passed." if all_ok else "Fix the non-optional items above before continuing.")
 
     sys.exit(0 if all_ok else 1)
 
