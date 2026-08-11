@@ -1,0 +1,48 @@
+{
+  "_notes": "Overlay, not a standalone profile — merge onto a base with scripts/merge_style_profile.py, don't pass this file as --style on its own. Captures what actually changes for a <60s vertical Shorts/Reels/TikTok cut of the same channel style: tighter pacing, a compressed arc, mobile/sound-off-safe captions, and a UI safe zone. Everything not listed here (color, camera_motion vocabulary, sound_design layering, transitions.backbone) stays whatever the base profile says — a Shorts cut should still look like the same show, just edited for the format. This overlay does NOT set aspect ratio by itself — both profiles already define a '9:16' entry under aspect_ratios; remember to pass --aspect 9:16 explicitly to scripts/resolve/build_project.py (the only script that takes it) when building a Shorts cut, the same as any other project.",
+
+  "narrative_arc": {
+    "beats_template": ["hook", "escalation", "payoff", "cta"],
+    "cut_on": "change_of_idea",
+    "notes": "The full essay arc (thesis/example/proof/abstraction) doesn't fit in Shorts runtime — compress straight from hook to the strongest single payoff. If the source material has a long-form beat plan already, this is usually the escalation/climax section of that plan, re-cut standalone, not the whole story retold small."
+  },
+
+  "energy_curve": [
+    { "beat": "hook", "target_energy": 9 },
+    { "beat": "escalation", "target_energy": 8 },
+    { "beat": "payoff", "target_energy": 10 },
+    { "beat": "cta", "target_energy": 6 }
+  ],
+
+  "pacing": {
+    "pause_threshold_s": 0.25,
+    "keep_pause_s": 0.08,
+    "min_visual_change_s": 1.2,
+    "shot_duration_by_intent_s": {
+      "pattern_interrupt": [0.3, 0.7],
+      "keyword_meme": [0.5, 1.2],
+      "kinetic_typography": [0.6, 1.5],
+      "illustrative_archival": [0.8, 2.0],
+      "diagram_evidence": [1.2, 3.0],
+      "emotional_footage": [1.2, 3.0]
+    }
+  },
+
+  "composition": {
+    "safe_zone": "Keep primary subjects/text within the center ~80% of frame width and out of the bottom ~15%/right ~12% — platform UI (captions, like/comment/share, profile) typically sits there. Verify against the actual target platform before finalizing, this is a general guideline not a pixel spec for any one app."
+  },
+
+  "captions": {
+    "max_words_per_chunk": 3,
+    "max_chars_per_chunk": 18,
+    "max_duration_s": 1.2,
+    "style_notes": "Bigger relative to frame than the long-form default — mobile viewing, often at arm's length. Treat captions as load-bearing, not optional: a large share of Shorts-style viewing happens muted, so the caption track has to carry the video on its own, not just reinforce audio someone's already hearing."
+  },
+
+  "media": {
+    "beat_max_duration_s": 2.5,
+    "meme_frequency_cap_s": 30,
+    "filler_categories": [],
+    "quality_min_height_px": 1080
+  }
+}

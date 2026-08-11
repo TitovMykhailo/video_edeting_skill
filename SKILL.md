@@ -306,6 +306,26 @@ Copy whichever is closer per channel/series rather than editing the shipped ones
 neither narrative arc fits the script's actual shape, say so and adjust a copy rather than
 forcing the content into a template it doesn't match.
 
+**For a smaller, situational refinement — not a different show, just a different cut of this
+one — reach for an overlay instead of a full copy.** The clearest example: the user already has a
+long-form video (or plan) in this style and now wants a Shorts/Reels cut of it, or wants "the same
+style but punchier" for one specific episode. Don't fork the whole profile for that — merge a small
+delta on top of it:
+
+```bash
+python3 scripts/merge_style_profile.py --base assets/style-profiles/nextcore-visual-essay.json \
+  --overlay assets/style-profiles/overlays/shorts.json --out out/style.merged.json
+```
+
+then use `out/style.merged.json` as `--style` for the rest of the pipeline, same as any profile.
+`assets/style-profiles/overlays/shorts.json` ships as the worked example (compressed arc, tighter
+pacing, mobile/sound-off-safe captions, a UI safe zone — see `references/style_profile_schema.md`'s
+"Overlays" section for the full mechanism and merge rules). This is also how to handle a mid-project
+ask like "can we also get a Shorts version of this" without redoing earlier profile-level design
+work — write the overlay, re-merge, rerun from step 2 onward with the merged style. A one-off
+overlay that's specific to a single project doesn't need to be reusable — it can live in that
+project's own folder instead of `assets/style-profiles/overlays/`.
+
 ## Aspect ratio
 
 The user works in both 16:9 (long-form) and 9:16 (shorts). If it's not obvious from context or

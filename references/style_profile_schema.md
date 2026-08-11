@@ -20,6 +20,49 @@ see the field notes below for what each number is actually modeling. Copy whiche
 a new file per channel/series rather than editing the shipped ones in place, so you can compare
 and revert.
 
+## Overlays: refining a profile without forking it
+
+Copying a whole new profile is the right move for a genuinely different show/channel identity. It's
+the *wrong* move for a smaller, situational refinement — a Shorts cut of the same channel, a
+one-off episode tweak, a client's palette change for a single job — because now two full files have
+to be kept in sync by hand forever. For that smaller case, use an **overlay**: a small JSON file
+with only the fields that differ, merged onto a base profile at build time with
+`scripts/merge_style_profile.py`:
+
+```bash
+python3 scripts/merge_style_profile.py \
+  --base assets/style-profiles/nextcore-visual-essay.json \
+  --overlay assets/style-profiles/overlays/shorts.json \
+  --out out/style.merged.json
+```
+
+Then pass `out/style.merged.json` as `--style` to every other script exactly like any normal
+profile — nothing downstream needs to know it was assembled from two files. Multiple `--overlay`
+flags apply in the order given (a shared overlay, then a project-specific one on top of it, for
+example). Merge rule: dicts merge key-by-key, recursively; anything else (lists, strings, numbers)
+is replaced outright by the overlay's value, never concatenated — an overlay that wants to add one
+filler word has to restate the whole list.
+
+**This is also how the pipeline gets refined mid-project.** If the user asks for a Shorts version
+partway through an already-planned long-form video, or wants "the same style but a bit punchier"
+for one specific episode, write a small overlay capturing just that delta and re-run from
+`plan_cuts.py` onward with the merged style — the base profile (and any other project already using
+it) stays untouched. `assets/style-profiles/overlays/shorts.json` ships as a worked example: it
+compresses `narrative_arc.beats_template` and `energy_curve` down to a 4-beat shape, tightens
+`pacing`/`captions` for a faster, mobile/sound-off-safe cut, and adds a `composition.safe_zone`
+note for platform UI — while leaving color, camera-motion vocabulary, and sound design exactly as
+the base profile defines them, since a Shorts cut should still look like the same show. A one-off
+overlay for a single project doesn't need to live in `assets/style-profiles/overlays/` at all —
+dropping it in the project's own folder and pointing `--overlay` at it there is fine when it's not
+meant to be reused.
+
+Only real, checkable fields belong in an overlay — including `"default_aspect"`-shaped ideas is a
+trap: aspect ratio is chosen by the explicit `--aspect` flag on `scripts/resolve/build_project.py`,
+nothing reads a default from the profile, so a field like that would silently do nothing. If an
+overlay needs the human/Claude to remember something procedural like "build this with `--aspect
+9:16`," say so in an `_notes` field (not read by any script, purely a breadcrumb) rather than
+inventing a JSON field that looks functional but isn't.
+
 ```jsonc
 {
   "name": "nextcore-visual-essay",
