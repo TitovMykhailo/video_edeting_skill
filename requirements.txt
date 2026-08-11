@@ -1,0 +1,9 @@
+faster-whisper>=1.0.0
+requests>=2.31.0
+
+# NOT pip-installable: the DaVinci Resolve scripting module (DaVinciResolveScript.py) ships
+# inside the Resolve app install. scripts/resolve/connect.py locates it via the
+# RESOLVE_SCRIPT_API / RESOLVE_SCRIPT_LIB env vars (with sane per-OS default paths as a
+# fallback) — see references/resolve_scripting_api.md for setup.
+#
+# Also required on PATH, installed separately (not via pip): ffmpeg, ffprobe.

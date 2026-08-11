@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy to config.json (gitignored) and fill in. Not read automatically by any script — it's a place to keep the paths/keys you'd otherwise retype every project; paste the relevant values as CLI flags or env vars.",
+
+  "media_library_path": "/path/to/your/media-library",
+
+  "default_style_profile": "assets/style-profiles/fast-explainer.json",
+
+  "default_aspect_ratio": "16:9",
+
+  "whisper_model": "small",
+  "whisper_language": "auto",
+
+  "stock_api_keys_env": {
+    "pexels": "PEXELS_API_KEY",
+    "pixabay": "PIXABAY_API_KEY",
+    "giphy": "GIPHY_API_KEY"
+  }
+}
