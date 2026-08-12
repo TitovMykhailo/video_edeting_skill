@@ -1,8 +1,12 @@
 """Connect to a running local DaVinci Resolve instance via its scripting API.
 
-See references/resolve_scripting_api.md for the one-time environment setup
-this depends on (RESOLVE_SCRIPT_API / RESOLVE_SCRIPT_LIB / PYTHONPATH, and
-enabling 'External scripting using: Local' in Resolve's preferences).
+See references/resolve_scripting_api.md for the one-time environment setup this depends on
+(RESOLVE_SCRIPT_API / RESOLVE_SCRIPT_LIB / PYTHONPATH). If get_resolve() below raises "loaded
+but returned no connection" and this process is a normal external one (a terminal, not something
+Resolve itself launched via its Scripts menu) — that's very likely DaVinci Resolve Free, where
+this call is Studio-only as of 19.1 (there's no preference to re-enable it; see
+resolve_scripting_api.md's "Free edition" note). Use scripts/resolve/run_from_menu.py (installed
+via install_menu_script.py) or scripts/resolve/build_otio.py instead.
 """
 import os
 import platform
@@ -47,8 +51,13 @@ def get_resolve():
     resolve = dvr_script.scriptapp("Resolve")
     if resolve is None:
         raise RuntimeError(
-            "Resolve's scripting module loaded but returned no connection. Make sure DaVinci "
-            "Resolve is running and Preferences > General > 'External scripting using' is set "
-            "to 'Local' (restart Resolve after changing it)."
+            "Resolve's scripting module loaded but returned no connection. First, make sure "
+            "DaVinci Resolve is actually running. If it is: on DaVinci Resolve Free, external "
+            "scripting (a script run as its own process, like this one) is blocked entirely as "
+            "of Resolve 19.1 — no preference re-enables it. Use scripts/resolve/build_otio.py, "
+            "or install scripts/resolve/run_from_menu.py via install_menu_script.py and run it "
+            "from Resolve's own Workspace > Scripts > Comp menu instead (that runs in-process, "
+            "which isn't gated). On Resolve Studio, this error instead usually means Resolve "
+            "just isn't running yet — see references/resolve_scripting_api.md."
         )
     return resolve

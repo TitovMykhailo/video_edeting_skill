@@ -298,7 +298,26 @@ If anything in this step errors, don't guess — read the Resolve error text (th
 useful messages) and check `references/resolve_scripting_api.md`'s troubleshooting notes before
 retrying blindly.
 
-**Free:**
+**Free — preferred: run the full pipeline via Resolve's own Scripts menu.** The Studio-only gate
+only blocks a script running as its own OS process; the same code run *inside* Resolve (via
+Workspace → Scripts) isn't gated (see `references/resolve_scripting_api.md`'s "Free edition" and
+"Running from the menu" sections). One-time per machine:
+
+```bash
+python3 scripts/resolve/install_menu_script.py
+```
+
+Then for each project, write the job file it reads (`<skill root>/.resolve_job.json` by default —
+same fields as `build_project.py`'s CLI flags, all paths absolute, see "Running from the menu" in
+`references/resolve_scripting_api.md` for the exact JSON shape) and tell the user: **Workspace →
+Scripts → Comp → build_video_project** (restart Resolve first if it was running when
+`install_menu_script.py` was run). Ask them to have Workspace → Console (F6) open with "Show
+Script Messages" on so they can see the same progress/warning/error output `build_project.py`
+would print to a terminal, and report back what it says. This gets the full pipeline — timeline
+build, color grade, clip gains, render — same as Studio; it just needs one manual click instead
+of a terminal command, since nothing in this skill can click Resolve's own menu.
+
+**Free — fallback, no install needed:**
 
 ```bash
 python3 scripts/resolve/build_otio.py --project-name "<name>" --narration-audio narration.wav \
@@ -310,10 +329,12 @@ python3 scripts/resolve/build_otio.py --project-name "<name>" --narration-audio 
 This never connects to Resolve at all — it writes `out/timeline.otio` (clip placement/trims for
 narration, B-Roll, SFX, and the music bed) plus `out/timeline.otio.manual_steps.md` (everything
 that doesn't survive the OTIO round-trip: clip gain levels, the CDL color grade, and a captions-
-import reminder). Tell the user to open Resolve, File → Import Timeline → OpenTimelineIO, pick the
-`.otio` file, then work through the manual-steps file. No render happens automatically on this
-path either — rendering itself isn't scripting-gated, so once the timeline looks right, the user
-renders normally from the Deliver page.
+import reminder). Use this over the menu-script path only if the user doesn't want anything
+installed into Resolve's own folders, or just wants a quick structural draft. Tell the user to
+open Resolve, File → Import Timeline → OpenTimelineIO, pick the `.otio` file, then work through
+the manual-steps file. No render happens automatically on this path either — rendering itself
+isn't scripting-gated, so once the timeline looks right, the user renders normally from the
+Deliver page.
 
 ## Style profiles
 

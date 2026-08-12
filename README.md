@@ -31,13 +31,23 @@ file Claude actually reads when this skill triggers. Everything below is just hu
 Python 3.9+, `ffmpeg`/`ffprobe`, и `pip3 install -r requirements.txt`.
 
 **Важно про Free vs Studio:** начиная с Resolve 19.1 (ноябрь 2024) внешний scripting API
-(`scriptapp("Resolve")` — то, чем пользуется `build_project.py`) доступен **только в Studio**.
-В бесплатной версии никакая настройка это не включает — в Preferences её просто нет. Если у вас
-Studio — `build_project.py` работает как описано в `SKILL.md`, шаг 6. Если Free — используйте
-`scripts/resolve/build_otio.py` вместо него: он пишет `.otio`-файл, который импортируется в
-Resolve обычным File → Import Timeline → OpenTimelineIO (это не scripting, поэтому работает и на
-Free), плюс файл `*.manual_steps.md` с тем немногим, что после этого нужно доделать руками
-(громкость клипов, цветокоррекция, субтитры). Подробности — `references/resolve_scripting_api.md`.
+(`scriptapp("Resolve")`, вызванный из отдельного процесса — как обычный запуск
+`build_project.py` из терминала) доступен **только в Studio**. В бесплатной версии никакая
+настройка это не включает — в Preferences её просто нет. Но тот же вызов, сделанный кодом,
+который запускает сам Resolve изнутри (через Workspace → Scripts), этим ограничением не
+скован — так что на Free есть два варианта:
+
+- **Предпочтительный:** один раз выполните `python3 scripts/resolve/install_menu_script.py` —
+  он ставит скрипт в меню Resolve. Дальше для каждого проекта Claude пишет job-файл, и вы просто
+  жмёте в Resolve: Workspace → Scripts → Comp → build_video_project. Это даёт полный пайплайн
+  (таймлайн, цветокоррекция, громкость, рендер) — так же, как в Studio, только через один клик
+  в самом Resolve вместо команды в терминале.
+- **Без установки:** `scripts/resolve/build_otio.py` пишет `.otio`-файл, который импортируется в
+  Resolve обычным File → Import Timeline → OpenTimelineIO, плюс файл `*.manual_steps.md` с тем
+  немногим, что нужно доделать руками (громкость клипов, цветокоррекция, субтитры) — проще, но
+  без автоматического рендера/грейда.
+
+Подробности — `references/resolve_scripting_api.md`.
 
 Дальше просто зовите Claude Code в папке с этим скиллом и с вашим проектом — он сам проведёт вас
 по шагам (`SKILL.md` и `scripts/check_environment.py` первым делом проверят, что всё на месте).
@@ -72,9 +82,12 @@ scripts/                     the deterministic pipeline stages (transcribe, cut 
                                  captions, media/sound indexing, stock fetch, timeline validation,
                                  style-profile overlay merging) + two optional subsystems:
   resolve/                     DaVinci Resolve automation (tracks, captions, color grade,
-                                   sound design, render) — needs a local running Resolve Studio;
-                                   build_otio.py is the Free-edition alternative (writes a .otio
-                                   file instead of using the Studio-only scripting API)
+                                   sound design, render) — full pipeline needs Resolve Studio for
+                                   a terminal-run build_project.py, OR Resolve Free via
+                                   install_menu_script.py + run_from_menu.py (runs in-process,
+                                   triggered by one click in Resolve's own Scripts menu);
+                                   build_otio.py is a no-install Free fallback (writes a .otio
+                                   file, structure only — no grade/gain/render automation)
   generate/                    code-generated frames when no found clip fits (kinetic
                                    typography, charts, arbitrary HTML/CSS/JS motion graphics)
 references/                 schemas (style profile, beat plan, media tagging) + the judgment

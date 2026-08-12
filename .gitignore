@@ -6,3 +6,4 @@ config.json
 *.mp4
 *.mov
 .DS_Store
+.resolve_job.json

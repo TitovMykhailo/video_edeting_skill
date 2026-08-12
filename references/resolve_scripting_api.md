@@ -36,29 +36,37 @@ authoritative source, not this doc. Read it before guessing at an unfamiliar cal
 
 3. Resolve must be **running** (any project open or the project manager screen) before any script
    connects — `scripts/resolve/connect.py` fails fast with a clear message if it isn't.
-4. **Free edition cannot use `build_project.py` at all — this isn't a settings problem, don't
-   spend time chasing one.** As of Resolve 19.1 (Nov 2024), Blackmagic made the *external*
-   scripting interface (an outside process calling `scriptapp("Resolve")`, which is what every
-   `resolve/*.py` module here does) Studio-only. Confirmed empirically against a real Resolve 21
-   Free install for this skill: env vars correct, DLL loads without error, a project open, same
-   Windows session, the scripting TCP port reachable — `scriptapp("Resolve")` still returns
-   `None`, always. No preference toggle re-enables it; the old "External scripting using: Local"
-   dropdown some guides mention has been removed from Free's Preferences UI entirely (it's not
-   hidden, not renamed to something else — it isn't there). The *internal* Console (Workspace
-   menu → Console, F6, language dropdown → Py3) still works fine on Free, because that runs
-   inside Resolve's own process rather than connecting from outside — it's just useless for this
-   skill's scripts, which by design run as an external Python process.
+4. **`build_project.py` run directly from a terminal cannot connect on Free — this isn't a
+   settings problem, don't spend time chasing one.** As of Resolve 19.1 (Nov 2024), Blackmagic
+   made the *external* scripting interface (a separate OS process calling `scriptapp("Resolve")`,
+   which is what running `build_project.py` from a terminal does) Studio-only. Confirmed
+   empirically against a real Resolve 21 Free install for this skill: env vars correct, DLL loads
+   without error, a project open, same Windows session, the scripting TCP port reachable —
+   `scriptapp("Resolve")` still returns `None`, always. No preference toggle re-enables it; the
+   old "External scripting using: Local" dropdown some guides mention has been removed from
+   Free's Preferences UI entirely (it's not hidden, not renamed — it isn't there).
 
-   **If you're on Free: use `scripts/resolve/build_otio.py` instead of `build_project.py`.** It
-   writes a `.otio` (OpenTimelineIO) file from the same `edit_plan.json`/`beat_plan.json`, which
-   Resolve imports as a normal file via File → Import Timeline → OpenTimelineIO — not gated by
-   the scripting restriction because it isn't scripting. It also writes a
-   `<output>.manual_steps.md` next to the `.otio` file listing everything that doesn't survive
-   the OTIO round-trip (clip gain levels, the CDL color grade, captions import) so you can finish
-   those by hand in a few minutes. See references/beat_plan_schema.md's "Free-edition OTIO path"
-   section.
+   The gate is specifically on the *cross-process* connection, though — not on scripting itself.
+   The exact same `scriptapp("Resolve")` call, made by code Resolve loads and runs **inside its
+   own process**, works fine on Free: confirmed via the F6 Console (Workspace → Console, language
+   dropdown → Py3) returning a real `resolve.GetVersionString()`, and via Resolve's own
+   `Workspace → Scripts` menu, which runs `.py` files from a per-user folder the same way. That's
+   what `scripts/resolve/run_from_menu.py` uses — see "Running from the menu" below, and prefer
+   it over `build_otio.py` on Free when you want the *full* pipeline (color grade, clip gains,
+   render), not just timeline structure.
 
-   If you're on Studio, none of this applies — `build_project.py` works as documented below.
+   If you're on Studio, none of this applies — `build_project.py` works from a terminal as
+   documented below.
+
+   **Two Free-edition paths, in order of preference:**
+   - `scripts/resolve/run_from_menu.py` (installed via `install_menu_script.py`) — runs the full
+     `build_project.py` pipeline in-process via one click in Resolve's Scripts menu. See "Running
+     from the menu" below.
+   - `scripts/resolve/build_otio.py` — no install step, but only carries timeline structure; gain
+     levels, CDL grade, and captions need manual follow-up. See
+     references/beat_plan_schema.md's "Free-edition OTIO path" section. Use this if the user
+     doesn't want anything installed into Resolve's own folders, or just wants a quick structural
+     draft.
 
 ## Connecting (the boilerplate every `resolve/*.py` module shares)
 
@@ -75,6 +83,55 @@ def get_resolve():
         raise RuntimeError("Could not connect to DaVinci Resolve — is it running?")
     return resolve
 ```
+
+## Running from the menu (Free edition's route to the full pipeline)
+
+One-time install, per machine:
+
+```bash
+python3 scripts/resolve/install_menu_script.py
+```
+
+This writes `build_video_project.py` into Resolve's per-user `Fusion/Scripts/Comp` folder
+(`install_menu_script.py`'s docstring has the exact path per OS — Blackmagic's own
+`README.txt` lists them too, under "Using a script"), with this repo's absolute path baked in via
+`repr()` so the installed copy can still `import build_project` and its sibling modules.
+**Restart Resolve** if it was already running when you installed this — it only scans the
+Scripts folder at startup, per Blackmagic's own README.
+
+Each run reads its parameters from a job file at `<skill root>/.resolve_job.json` (override with
+`--job-file` at install time) — write this JSON before telling the user to click the menu entry:
+
+```json
+{
+  "project_name": "My Video",
+  "narration_audio": "/abs/path/narration.wav",
+  "edit_plan": "/abs/path/out/edit_plan.json",
+  "beat_plan": "/abs/path/out/beat_plan.json",
+  "style": "/abs/path/style.json",
+  "aspect": "16:9",
+  "media_library": "/abs/path/to/media-library",
+  "sound_library": "/abs/path/to/sound-library",
+  "captions": "/abs/path/out/captions.srt",
+  "render_out": "/abs/path/out/render.mp4"
+}
+```
+
+(`sound_library`, `captions`, `render_out` are optional — same semantics as the matching
+`build_project.py` CLI flags.) Use **absolute paths** — the installed script's working directory
+is whatever Resolve happens to be running from, not this project's folder.
+
+Then tell the user: **Workspace → Scripts → Comp → build_video_project**. This is a manual click
+— nothing in this skill can trigger it, since it has to run inside Resolve's own process. Ask the
+user to open Workspace → Console (F6) first so they can see the same stderr output
+`build_project.py` would print to a terminal (progress lines, warnings, the final "Done" message,
+or an error) — the Console's "Show Script Messages" toggle must be on, or output won't appear.
+
+If it fails with the *same* "loaded but returned no connection" error `build_project.py` gives
+when run externally, something more fundamental is wrong (Resolve not actually running, a stale
+project state) — that error from *inside* Resolve's own script host would be unexpected based on
+what this skill has confirmed so far, so don't assume it's the Free/Studio gate again; ask the
+user what the Console shows in full.
 
 ## Core objects and calls used by this skill
 
