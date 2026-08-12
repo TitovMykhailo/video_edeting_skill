@@ -46,14 +46,19 @@ authoritative source, not this doc. Read it before guessing at an unfamiliar cal
    old "External scripting using: Local" dropdown some guides mention has been removed from
    Free's Preferences UI entirely (it's not hidden, not renamed — it isn't there).
 
-   The gate is specifically on the *cross-process* connection, though — not on scripting itself.
-   The exact same `scriptapp("Resolve")` call, made by code Resolve loads and runs **inside its
-   own process**, works fine on Free: confirmed via the F6 Console (Workspace → Console, language
-   dropdown → Py3) returning a real `resolve.GetVersionString()`, and via Resolve's own
-   `Workspace → Scripts` menu, which runs `.py` files from a per-user folder the same way. That's
-   what `scripts/resolve/run_from_menu.py` uses — see "Running from the menu" below, and prefer
-   it over `build_otio.py` on Free when you want the *full* pipeline (color grade, clip gains,
-   render), not just timeline structure.
+   The gate is on *requesting a fresh connection* specifically — not on scripting itself, and not
+   simply on "which process the code runs in" the way an earlier draft of this doc assumed.
+   Directly tested both ways on a real Free install: a script Resolve itself launches via
+   `Workspace → Scripts` calling `scriptapp("Resolve")` still gets `None`, same as an external
+   terminal. But that same script's `__main__` already has a **pre-injected, already-connected**
+   `resolve` object sitting in it before any of our code runs — confirmed with a small diagnostic
+   script that dumped its own globals and found a live `Resolve (0x...) [App: 'Resolve' on
+   127.0.0.1, ...]` object waiting there, the same hand-off the F6 Console gets (Workspace →
+   Console, language dropdown → Py3, `resolve.GetVersionString()` returns a real value there
+   too). `scripts/resolve/connect.py`'s `get_resolve()` checks for that pre-injected global
+   first, before ever calling `scriptapp()` itself — that's what makes
+   `scripts/resolve/run_from_menu.py` work on Free. Prefer it over `build_otio.py` on Free when
+   you want the *full* pipeline (color grade, clip gains, render), not just timeline structure.
 
    If you're on Studio, none of this applies — `build_project.py` works from a terminal as
    documented below.
@@ -74,6 +79,14 @@ authoritative source, not this doc. Read it before guessing at an unfamiliar cal
 import sys, os
 
 def get_resolve():
+    # Check for a pre-injected connection first (Resolve hands one to any script it launches
+    # itself, via Workspace > Scripts or the Console — this is what makes Free work at all).
+    import __main__
+    injected = getattr(__main__, "resolve", None)
+    if injected is not None:
+        return injected
+
+    # Otherwise, request a fresh one — Studio-only on Resolve >= 19.1.
     api_path = os.environ.get("RESOLVE_SCRIPT_API")
     if api_path:
         sys.path.append(os.path.join(api_path, "Modules"))

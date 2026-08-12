@@ -298,10 +298,11 @@ If anything in this step errors, don't guess — read the Resolve error text (th
 useful messages) and check `references/resolve_scripting_api.md`'s troubleshooting notes before
 retrying blindly.
 
-**Free — preferred: run the full pipeline via Resolve's own Scripts menu.** The Studio-only gate
-only blocks a script running as its own OS process; the same code run *inside* Resolve (via
-Workspace → Scripts) isn't gated (see `references/resolve_scripting_api.md`'s "Free edition" and
-"Running from the menu" sections). One-time per machine:
+**Free — preferred: run the full pipeline via Resolve's own Scripts menu.** The Studio gate
+blocks *requesting a fresh connection* (`scriptapp("Resolve")`) no matter who calls it — but a
+script Resolve launches itself, via Workspace → Scripts, gets a working connection pre-injected
+into it, no request needed (confirmed by direct test — see `references/resolve_scripting_api.md`'s
+"Free edition" and "Running from the menu" sections for how). One-time per machine:
 
 ```bash
 python3 scripts/resolve/install_menu_script.py

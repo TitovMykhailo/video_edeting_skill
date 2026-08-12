@@ -30,12 +30,13 @@ file Claude actually reads when this skill triggers. Everything below is just hu
 скриптовый API Resolve не достаёт до облака. Установите на свой компьютер: DaVinci Resolve,
 Python 3.9+, `ffmpeg`/`ffprobe`, и `pip3 install -r requirements.txt`.
 
-**Важно про Free vs Studio:** начиная с Resolve 19.1 (ноябрь 2024) внешний scripting API
-(`scriptapp("Resolve")`, вызванный из отдельного процесса — как обычный запуск
-`build_project.py` из терминала) доступен **только в Studio**. В бесплатной версии никакая
-настройка это не включает — в Preferences её просто нет. Но тот же вызов, сделанный кодом,
-который запускает сам Resolve изнутри (через Workspace → Scripts), этим ограничением не
-скован — так что на Free есть два варианта:
+**Важно про Free vs Studio:** начиная с Resolve 19.1 (ноябрь 2024) запрос НОВОГО scripting-
+соединения (`scriptapp("Resolve")`) доступен **только в Studio** — и это верно, даже если этот
+вызов делает скрипт, запущенный самим Resolve через Workspace → Scripts (проверено напрямую).
+В бесплатной версии никакая настройка это не включает — в Preferences её просто нет. Но скрипту,
+который запускает сам Resolve (через Workspace → Scripts или консоль F6), Resolve сразу
+подставляет уже готовое, живое соединение — запрашивать новое не нужно (тоже проверено напрямую).
+Поэтому на Free есть два варианта:
 
 - **Предпочтительный:** один раз выполните `python3 scripts/resolve/install_menu_script.py` —
   он ставит скрипт в меню Resolve. Дальше для каждого проекта Claude пишет job-файл, и вы просто

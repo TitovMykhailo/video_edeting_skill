@@ -3,17 +3,18 @@
 inside Resolve's Scripts folder is generated from it by install_menu_script.py and should not be
 hand-edited there. Edit this repo copy and re-run the installer instead.
 
-Why this exists: DaVinci Resolve Free blocks the *external* scripting connection build_project.py
-normally uses (see references/resolve_scripting_api.md's "Free edition" note) — but that gate
-only applies to a script running as a separate OS process. A script Resolve loads and runs
-itself, via Workspace > Scripts, executes inside Resolve's own embedded Python interpreter and
-isn't subject to that gate — the same `scriptapp("Resolve")` call that returns None from an
-external terminal works fine there (confirmed via Resolve's own F6 Console on a real Free
-install: `resolve.GetVersionString()` returned a real value, in-process, on the same machine
-where an external python.exe got None every time). This wrapper is what lets the full
-build_project.py pipeline (timeline build, color grade, clip gains, render) run on Free,
-triggered by one click in the menu, instead of only the more limited
-scripts/resolve/build_otio.py structural-import path.
+Why this exists: DaVinci Resolve Free blocks requesting a *fresh* scripting connection
+(`scriptapp("Resolve")`) — confirmed this is true even for a script Resolve itself runs via
+Workspace > Scripts, not just an external terminal process (both got `None` in testing). What
+Free does allow is *using* a connection Resolve hands you: when it launches a script via the
+Scripts menu (same as the F6 Console), it pre-injects an already-connected `resolve` object as a
+global into that script's `__main__` — confirmed by a direct diagnostic script dumping its own
+globals on a real Free install, which showed a live `Resolve (0x...) [App: 'Resolve' on
+127.0.0.1, ...]` object sitting there before any of our code ran. `connect.get_resolve()` checks
+for that pre-injected global first and only falls back to requesting a fresh connection if it's
+missing — which is what makes it work here. This wrapper is what lets the full build_project.py
+pipeline (timeline build, color grade, clip gains, render) run on Free, triggered by one click in
+the menu, instead of only the more limited scripts/resolve/build_otio.py structural-import path.
 
 Each run reads its parameters from a job JSON file, since Resolve's Scripts menu doesn't pass CLI
 args the way a terminal invocation would — see references/resolve_scripting_api.md's "Running
