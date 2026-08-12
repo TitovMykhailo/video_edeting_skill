@@ -272,9 +272,13 @@ must end with `end_word == len(words_new_timeline)`) — then run:
 ```bash
 python3 scripts/beat_plan_from_words.py --edit-plan out/edit_plan.json --spec out/beat_spec.json \
   --generated-dir out/generated --media-library <path-to-library> --out out/beat_plan.json \
-  --fps <fps from the style profile's aspect_ratios entry> \
+  --fps <fps> --width <width> --height <height>   # all three from the style profile's chosen aspect_ratios entry \
   --music-bed '{"path": "music/bed.mp3", "loop": true}'
 ```
+**Pass `--width`/`--height` matching the aspect you're actually building** (e.g. 1080x1920 for
+9:16) whenever the spec has any `"generate"` beats — `kinetic_text.py`/`chart.py` both default to
+their own 16:9 resolution otherwise, which silently puts a landscape hook/CTA card into a
+portrait Shorts timeline.
 Each beat's start is always the previous beat's end and the first/last beats always span
 `0.0`→`total_new_duration_s`, so there's no arithmetic step where a gap or overlap could be
 introduced — and for `"generate"` beats it actually renders the clip at the beat's exact computed

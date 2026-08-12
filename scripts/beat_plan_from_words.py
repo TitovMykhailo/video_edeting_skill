@@ -44,10 +44,14 @@ generate.kind == "chart": pass through fields matching chart.py's CLI (chart_typ
 Usage:
     python3 beat_plan_from_words.py --edit-plan out/edit_plan.json --spec beat_spec.json \
         --generated-dir out/generated --media-library <path> --out out/beat_plan.json \
-        [--fps 30] [--music-bed '{"path": "music.wav", "loop": true}']
+        [--fps 30] [--width 1080] [--height 1920] \
+        [--music-bed '{"path": "music.wav", "loop": true}']
 
 --fps must match the fps the style profile's aspect_ratios entry will actually build at — see
-why below.
+why below. --width/--height must match that same aspect_ratios entry too (e.g. 1080x1920 for
+9:16) and are only used for "generate" beats — kinetic_text.py/chart.py both default to their
+own 16:9 resolution if these are omitted, which silently puts a landscape clip in a portrait
+Shorts timeline. Omit only if every "generate" beat in the spec sets its own width/height.
 """
 import argparse
 import json
@@ -118,7 +122,7 @@ def render_held_image(image_path, duration_s, fps, out_path):
         raise RuntimeError(f"Rendering held image {image_path} -> {out_path} failed:\n{result.stderr[-2000:]}")
 
 
-def render_generated(gen, out_path, duration_s, fps):
+def render_generated(gen, out_path, duration_s, fps, width=None, height=None):
     # --fps must be passed through explicitly: kinetic_text.py/chart.py each round
     # (duration * their own --fps) to a frame count independently, defaulting to 30 if not told
     # otherwise. duration_s here was back-computed from a frame count at *this* script's --fps
@@ -169,6 +173,16 @@ def render_generated(gen, out_path, duration_s, fps):
 
     if gen.get("transparent"):
         cmd.append("--transparent")
+    # Both generators default to their own hardcoded 16:9 resolution if --width/--height are
+    # omitted — reproduced live on a 9:16 Shorts project: the hook/CTA kinetic_text cards came
+    # out 1920x1080 with nothing here ever telling them otherwise, landscape clips silently
+    # heading into a portrait timeline. --width/--height must come from the SAME aspect_ratios
+    # entry --fps already does; a per-beat override (gen["width"]/gen["height"]) is still
+    # honored for the rare beat that genuinely wants a different frame size.
+    if gen.get("width") or width:
+        cmd += ["--width", str(gen.get("width") or width)]
+    if gen.get("height") or height:
+        cmd += ["--height", str(gen.get("height") or height)]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -183,6 +197,8 @@ def main():
     parser.add_argument("--media-library", required=True, help="used to look up probed durations for media beats")
     parser.add_argument("--out", required=True)
     parser.add_argument("--fps", type=float, default=30.0, help="must match the style profile's aspect_ratios fps used for the actual Resolve build — see the module docstring's to_frame() note")
+    parser.add_argument("--width", type=int, help="frame width for generated (kinetic_text/chart) beats — must match the style profile's aspect_ratios entry, e.g. 1080 for 9:16. Omit only if every 'generate' beat sets its own width.")
+    parser.add_argument("--height", type=int, help="frame height for generated beats, e.g. 1920 for 9:16 — see --width")
     parser.add_argument("--music-bed", help="JSON object for the beat_plan.json music_bed field, if any")
     args = parser.parse_args()
 
@@ -223,7 +239,7 @@ def main():
             gen = spec["generate"]
             ext = ".mov" if gen.get("transparent") else ".mp4"
             out_path = os.path.join(args.generated_dir, f"{i:03d}_{gen['kind']}{ext}")
-            render_generated(gen, out_path, duration_s, args.fps)
+            render_generated(gen, out_path, duration_s, args.fps, width=args.width, height=args.height)
             media = {"path": os.path.abspath(out_path), "src_in": 0.0, "src_out": duration_s, "loop": False}
         elif "media" in spec:
             media = dict(spec["media"])
