@@ -278,7 +278,13 @@ python3 scripts/beat_plan_from_words.py --edit-plan out/edit_plan.json --spec ou
 **Pass `--width`/`--height` matching the aspect you're actually building** (e.g. 1080x1920 for
 9:16) whenever the spec has any `"generate"` beats — `kinetic_text.py`/`chart.py` both default to
 their own 16:9 resolution otherwise, which silently puts a landscape hook/CTA card into a
-portrait Shorts timeline.
+portrait Shorts timeline. With `--width`/`--height` set, this also covers real library clips: any
+`"media"` beat whose source's native aspect ratio doesn't reasonably match the target gets
+pre-reframed the same way — the whole source fitted in frame over a blurred, filled copy of
+itself, never cropped into (see `render_fitted_source()`'s docstring in the script). On a Shorts
+project built from typically-landscape meme/reaction footage, expect this to fire for nearly
+every real-clip beat — that's expected, not a bug: a plain scale-and-crop was tried first and, on
+a real build, cropped a reaction meme's face almost entirely out of frame.
 Each beat's start is always the previous beat's end and the first/last beats always span
 `0.0`→`total_new_duration_s`, so there's no arithmetic step where a gap or overlap could be
 introduced — and for `"generate"` beats it actually renders the clip at the beat's exact computed

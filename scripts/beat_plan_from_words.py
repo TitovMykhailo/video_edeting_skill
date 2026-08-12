@@ -96,7 +96,97 @@ def load_index_info(media_library):
     return durations, kinds
 
 
-def render_held_image(image_path, duration_s, fps, out_path):
+def probe_dimensions(path):
+    """Native (width, height) of any image or video file, via ffprobe. Returns None on failure —
+    callers treat that as "can't tell, don't reframe" rather than guessing."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+             "-of", "csv=p=0", path],
+            capture_output=True, text=True, timeout=30,
+        )
+        w, h = out.stdout.strip().split(",")[:2]
+        return int(w), int(h)
+    except Exception:  # noqa: BLE001 — any probe failure just means "skip reframing"
+        return None
+
+
+def probe_duration_s(path):
+    """Live ffprobe fallback for a clip's real duration when the media index doesn't have one
+    (probe: null — the actual state of this skill's own media_index.json in real use, apparently
+    from a tagging pass that ran without ffprobe on PATH). Without this, the caller used to just
+    ASSUME an unknown-duration clip was exactly as long as its beat needed (src_out = src_in +
+    duration_s), which is silently wrong whenever it's shorter — reproduced live: a 2.3s gif got
+    treated as if it covered a 2.64s beat, the loop-needed check compared the assumed length
+    against itself and always came back "long enough," and the beat rendered 0.34s short instead
+    of looping to fill it. Returns None (not a guess) on failure — the caller falls back to the
+    old assume-long-enough behavior only when even this can't tell."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+            capture_output=True, text=True, timeout=30,
+        )
+        return round(float(out.stdout.strip()), 3)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def aspect_mismatched(src_w, src_h, target_w, target_h, tolerance=0.1):
+    """True when a straight scale-and-crop to (target_w, target_h) would need to cut away more
+    than `tolerance` of the source's shorter dimension — the point past which a crop stops being
+    a minor reframe and starts cutting off the actual subject. A 9:16 target against typical
+    landscape/square meme footage (the common case for this skill's own library) is always past
+    this, by design — that's exactly the case that needs fitting instead of cropping."""
+    if not target_w or not target_h:
+        return False
+    src_ar = src_w / src_h
+    target_ar = target_w / target_h
+    return abs(src_ar - target_ar) / target_ar > tolerance
+
+
+def render_fitted_source(source_path, out_path, duration_s, fps, width, height, src_in_s=0.0, is_image=False, loop_source=False):
+    """Render `duration_s` of `source_path` into an exact width x height clip, fitting the WHOLE
+    source in frame (never cropping into it) via a blurred, darkened, filled copy of the same
+    source behind it — the standard "reel-ify" technique, not plain letterbox bars. Used whenever
+    a source's aspect ratio doesn't reasonably match the target (see aspect_mismatched()).
+
+    Why not a plain scale-and-crop to fill: tried it first, on this skill's own real meme library
+    going into a 9:16 project. A nearly-square 736x670 source cropped to 1080x1916 pushed the
+    subject's face almost entirely out of frame with a wall filling most of it; a landscape
+    close-up face shot cropped the same way zoomed in so far the face became unrecognizable
+    skin texture — the exact opposite of what a reaction meme needs, since the whole point is the
+    face being legible. Confirmed on rendered preview frames, not just reasoned about. Fitting the
+    full source in frame guarantees the subject is never cut off, at the cost of a filled border
+    instead of the frame being 100% sharp source pixels — a real tradeoff, but a far smaller one."""
+    vf = (
+        f"split=2[bg][fg];"
+        f"[bg]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
+        f"gblur=sigma=30,eq=brightness=-0.2[bgb];"
+        f"[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[fgs];"
+        f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2,format=yuv420p"
+    )
+    if is_image:
+        cmd = [
+            "ffmpeg", "-y", "-loop", "1", "-i", source_path,
+            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, out_path,
+        ]
+    else:
+        # -stream_loop -1 (before -i, so it's an input option) repeats the source indefinitely;
+        # -t downstream still cuts the OUTPUT to exactly duration_s. Needed whenever the source
+        # is shorter than the beat wants — same case build_video_track's own `loop` flag exists
+        # for, just applied before Resolve ever sees the file instead of via repeated AppendToTimeline
+        # placements, since this path already commits to a single pre-rendered clip per beat.
+        loop_args = ["-stream_loop", "-1"] if loop_source else []
+        cmd = [
+            "ffmpeg", "-y", *loop_args, "-ss", str(src_in_s), "-i", source_path,
+            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, "-an", out_path,
+        ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    if result.returncode != 0:
+        raise RuntimeError(f"Rendering fitted clip {source_path} -> {out_path} failed:\n{result.stderr[-2000:]}")
+
+
+def render_held_image(image_path, duration_s, fps, out_path, width=None, height=None):
     """Render a still image to a short video clip holding it for exactly duration_s.
 
     Why: a still image handed to Resolve's AppendToTimeline with an explicit startFrame/endFrame
@@ -108,7 +198,18 @@ def render_held_image(image_path, duration_s, fps, out_path):
     leading theory, but unverified without deeper access) — sidestepped instead of chased: an
     image beat becomes an ordinary short video clip with an unambiguous, ffprobe-verifiable frame
     count, the same tier this skill already uses for generated kinetic-text/chart clips, removing
-    any Resolve-specific still-image handling from the equation entirely."""
+    any Resolve-specific still-image handling from the equation entirely.
+
+    width/height matter just as much here as for the generated-text tier: without them this used
+    to just round the SOURCE IMAGE's own native pixel dimensions to even numbers, so a still
+    handed to a 9:16 project came out at whatever arbitrary resolution the JPG happened to be
+    instead of 1080x1920. Fixed once already with a scale-and-crop-to-fill — then found on a real
+    rendered frame that the crop was cutting the actual subject's face out of frame on anything
+    not already close to the target aspect. Now delegates to render_fitted_source(), which fits
+    the whole image in frame instead of cropping into it — see that function's docstring."""
+    if width and height:
+        render_fitted_source(image_path, out_path, duration_s, fps, width, height, is_image=True)
+        return
     result = subprocess.run(
         [
             "ffmpeg", "-y", "-loop", "1", "-i", image_path,
@@ -250,10 +351,13 @@ def main():
                 # of an in-place trim, sidestepping whatever Resolve does with still durations.
                 abs_image = rel_path if os.path.isabs(rel_path) else os.path.join(args.media_library, rel_path)
                 out_path = os.path.join(args.generated_dir, f"{i:03d}_held_image.mp4")
-                render_held_image(abs_image, duration_s, args.fps, out_path)
+                render_held_image(abs_image, duration_s, args.fps, out_path, width=args.width, height=args.height)
                 media = {"path": os.path.abspath(out_path), "src_in": 0.0, "src_out": duration_s, "loop": False}
             else:
+                abs_media = rel_path if os.path.isabs(rel_path) else os.path.join(args.media_library, rel_path)
                 clip_duration = durations.get(rel_path)
+                if clip_duration is None:
+                    clip_duration = probe_duration_s(abs_media)
                 if "src_in" not in media:
                     media["src_in"] = 0.0
                 if "src_out" not in media:
@@ -272,6 +376,25 @@ def main():
                     # a handful of reused clips this affected.
                     clip_frames = to_frame(media["src_out"], args.fps) - to_frame(media["src_in"], args.fps)
                     media["loop"] = clip_frames < beat_frames
+
+                # A real video/gif library clip handed straight to Resolve gets whatever "Input
+                # Sizing" behavior the project/clip defaults to — undocumented and not something
+                # this skill sets, and not something ffmpeg preprocessing can see or control
+                # either way. Pre-reframe it ourselves, the same way image/generate beats already
+                # are, whenever its native aspect doesn't reasonably match the target: fitting the
+                # whole clip in frame (see render_fitted_source's docstring) instead of leaving the
+                # crop/fit decision to an unknown default. Confirmed live: every clip in this
+                # skill's own real meme library is landscape or square, so this fires for
+                # essentially every beat on a 9:16 (Shorts) project — that's expected, not a bug.
+                if args.width and args.height:
+                    dims = probe_dimensions(abs_media)
+                    if dims and aspect_mismatched(dims[0], dims[1], args.width, args.height):
+                        out_path = os.path.join(args.generated_dir, f"{i:03d}_reframed.mp4")
+                        render_fitted_source(
+                            abs_media, out_path, duration_s, args.fps, args.width, args.height,
+                            src_in_s=media["src_in"], is_image=False, loop_source=media.get("loop", False),
+                        )
+                        media = {"path": os.path.abspath(out_path), "src_in": 0.0, "src_out": duration_s, "loop": False}
         else:
             raise ValueError(f"Beat {i}: needs either 'media' or 'generate'")
 
