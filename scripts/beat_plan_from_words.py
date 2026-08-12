@@ -157,7 +157,17 @@ def render_fitted_source(source_path, out_path, duration_s, fps, width, height, 
     skin texture — the exact opposite of what a reaction meme needs, since the whole point is the
     face being legible. Confirmed on rendered preview frames, not just reasoned about. Fitting the
     full source in frame guarantees the subject is never cut off, at the cost of a filled border
-    instead of the frame being 100% sharp source pixels — a real tradeoff, but a far smaller one."""
+    instead of the frame being 100% sharp source pixels — a real tradeoff, but a far smaller one.
+
+    Explicit -pix_fmt yuv420p and -color_range tv as OUTPUT flags, not just the `format=yuv420p`
+    filter step: reproduced live that a JPEG-sourced image (decoded full-range by ffmpeg) still
+    got muxed as yuvj420p/pc/bt470bg — a distinct "JPEG-flavored" pixel format libx264 falls back
+    to when full-range color propagates through the filter chain, even though `format=yuv420p`
+    changed the pixel LAYOUT. Every other clip on the same real timeline came out yuv420p/tv, and
+    the odd one out sat right at the failure point when DaVinci Resolve's internal Fusion pipeline
+    threw a real "MediaOut1 failed at time N" error partway through that specific clip on a real
+    build. The explicit output flags force the standard, consistent tag regardless of what the
+    filter chain's internal range detection decided."""
     vf = (
         f"split=2[bg][fg];"
         f"[bg]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
@@ -165,10 +175,11 @@ def render_fitted_source(source_path, out_path, duration_s, fps, width, height, 
         f"[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[fgs];"
         f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2,format=yuv420p"
     )
+    pix_fmt_args = ["-pix_fmt", "yuv420p", "-color_range", "tv"]
     if is_image:
         cmd = [
             "ffmpeg", "-y", "-loop", "1", "-i", source_path,
-            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, out_path,
+            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, *pix_fmt_args, out_path,
         ]
     else:
         # -stream_loop -1 (before -i, so it's an input option) repeats the source indefinitely;
@@ -179,7 +190,7 @@ def render_fitted_source(source_path, out_path, duration_s, fps, width, height, 
         loop_args = ["-stream_loop", "-1"] if loop_source else []
         cmd = [
             "ffmpeg", "-y", *loop_args, "-ss", str(src_in_s), "-i", source_path,
-            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, "-an", out_path,
+            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, *pix_fmt_args, "-an", out_path,
         ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
