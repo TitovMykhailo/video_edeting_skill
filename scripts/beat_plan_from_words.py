@@ -71,17 +71,46 @@ def to_frame(seconds, fps):
     return round(seconds * fps)
 
 
-def load_index_durations(media_library):
+def load_index_info(media_library):
+    """Returns (durations, kinds) — both keyed by the index's relative path."""
     index_path = os.path.join(media_library, "_media_index.json")
     durations = {}
+    kinds = {}
     if os.path.exists(index_path):
         with open(index_path, encoding="utf-8") as f:
             index = json.load(f)
         for rel_path, entry in index.get("files", {}).items():
+            kinds[rel_path] = entry.get("kind")
             probe = entry.get("probe") or {}
             if probe.get("duration_s"):
                 durations[rel_path] = probe["duration_s"]
-    return durations
+    return durations, kinds
+
+
+def render_held_image(image_path, duration_s, fps, out_path):
+    """Render a still image to a short video clip holding it for exactly duration_s.
+
+    Why: a still image handed to Resolve's AppendToTimeline with an explicit startFrame/endFrame
+    trim did not reliably end up at the requested length on a real build — the timeline showed
+    a same-image clip placed far longer than requested (Resolve's own log reported ~100 extra
+    frames on several image beats, all flagged as "Trimming item on V1 because it overlaps
+    previous items" against the next beat, cascading into ~400 overlap warnings across the whole
+    build). Root cause not confirmed (a still-image default-duration behavior in Resolve is the
+    leading theory, but unverified without deeper access) — sidestepped instead of chased: an
+    image beat becomes an ordinary short video clip with an unambiguous, ffprobe-verifiable frame
+    count, the same tier this skill already uses for generated kinetic-text/chart clips, removing
+    any Resolve-specific still-image handling from the equation entirely."""
+    result = subprocess.run(
+        [
+            "ffmpeg", "-y", "-loop", "1", "-i", image_path,
+            "-t", str(duration_s), "-r", str(int(fps)),
+            "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            out_path,
+        ],
+        capture_output=True, text=True, timeout=60,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Rendering held image {image_path} -> {out_path} failed:\n{result.stderr[-2000:]}")
 
 
 def render_generated(gen, out_path, duration_s, fps):
@@ -151,7 +180,7 @@ def main():
     with open(args.spec, encoding="utf-8") as f:
         spec_list = json.load(f)
 
-    durations = load_index_durations(args.media_library)
+    durations, kinds = load_index_info(args.media_library)
     os.makedirs(args.generated_dir, exist_ok=True)
 
     beats = []
@@ -185,16 +214,34 @@ def main():
         elif "media" in spec:
             media = dict(spec["media"])
             rel_path = media["path"]
-            clip_duration = durations.get(rel_path)
-            if "src_in" not in media:
-                media["src_in"] = 0.0
-            if "src_out" not in media:
-                if clip_duration is not None:
-                    media["src_out"] = round(min(media["src_in"] + duration_s, clip_duration), 3)
-                else:
-                    media["src_out"] = round(media["src_in"] + duration_s, 3)
-            if "loop" not in media:
-                media["loop"] = (media["src_out"] - media["src_in"]) < duration_s
+
+            if kinds.get(rel_path) == "image":
+                # See render_held_image()'s docstring: images go through a real render instead
+                # of an in-place trim, sidestepping whatever Resolve does with still durations.
+                abs_image = rel_path if os.path.isabs(rel_path) else os.path.join(args.media_library, rel_path)
+                out_path = os.path.join(args.generated_dir, f"{i:03d}_held_image.mp4")
+                render_held_image(abs_image, duration_s, args.fps, out_path)
+                media = {"path": os.path.abspath(out_path), "src_in": 0.0, "src_out": duration_s, "loop": False}
+            else:
+                clip_duration = durations.get(rel_path)
+                if "src_in" not in media:
+                    media["src_in"] = 0.0
+                if "src_out" not in media:
+                    if clip_duration is not None:
+                        media["src_out"] = round(min(media["src_in"] + duration_s, clip_duration), 3)
+                    else:
+                        media["src_out"] = round(media["src_in"] + duration_s, 3)
+                if "loop" not in media:
+                    # Frame-accurate (matches build_video_track's own to_frame()-based check),
+                    # not a raw float compare: src_out/src_in get rounded to 3 decimals above,
+                    # so e.g. a true clip length of 1.53333...s can round down to a stored 1.533
+                    # — comparing that rounded value against the unrounded duration_s spuriously
+                    # says the clip is shorter than the beat by a fraction of a frame, setting
+                    # loop=true for a clip that actually fits exactly. Caught via a real Resolve
+                    # build's "Trimming item on V1 because it overlaps" warnings tracing back to
+                    # a handful of reused clips this affected.
+                    clip_frames = to_frame(media["src_out"], args.fps) - to_frame(media["src_in"], args.fps)
+                    media["loop"] = clip_frames < beat_frames
         else:
             raise ValueError(f"Beat {i}: needs either 'media' or 'generate'")
 
