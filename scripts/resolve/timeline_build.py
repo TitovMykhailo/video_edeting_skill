@@ -14,6 +14,23 @@ def to_frame(seconds, fps):
     return round(seconds * fps)
 
 
+def _verify_append_count(result, clip_infos, what):
+    """AppendToTimeline does not overwrite an overlapping record: when two clipInfos in the same
+    batch resolve to overlapping record ranges on the same track, Resolve silently keeps the
+    EARLIER one and drops the later one from the returned list — no exception, no indication of
+    which clipInfo lost (independently verified against a real Resolve build by the
+    davinci-resolve-mcp project's testing; see references/resolve_scripting_api.md). A non-empty
+    `result` is therefore not proof nothing was lost — only a count match is. Call this after
+    every AppendToTimeline batch that's supposed to place exactly len(clip_infos) items."""
+    if len(result) != len(clip_infos):
+        raise RuntimeError(
+            f"AppendToTimeline placed {len(result)}/{len(clip_infos)} {what}. Resolve drops a "
+            "clip whose record range overlaps an earlier one on the same track instead of "
+            "erroring — rerun validate_timeline.py against beat_plan.json to find the collision "
+            "before re-running the build."
+        )
+
+
 def get_or_create_folder(media_pool, root_folder, name):
     for sub in root_folder.GetSubFolderList():
         if sub.GetName() == name:
@@ -116,6 +133,7 @@ def build_audio_track_declicked(media_pool, timeline, narration_item, total_dura
             "AppendToTimeline returned nothing for the narration audio track. Check the "
             "declicked narration file imported correctly."
         )
+    _verify_append_count(result, [clip_info], "for the declicked narration track")
     return result
 
 
@@ -152,6 +170,7 @@ def build_audio_track(media_pool, timeline, narration_item, keep_segments, fps, 
             "narration file imported correctly and its startFrame/endFrame ranges are within "
             "its actual duration."
         )
+    _verify_append_count(result, clip_infos, "narration segments")
     return result
 
 
@@ -229,4 +248,5 @@ def build_video_track(media_pool, timeline, beat_plan, media_item_by_path, fps, 
             "recordFrame that collides with the timeline's existing content in an unexpected "
             "way, or a startFrame/endFrame outside the source clip's real duration."
         )
+    _verify_append_count(result, clip_infos, "video beats")
     return result

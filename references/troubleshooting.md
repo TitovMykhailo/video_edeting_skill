@@ -56,6 +56,28 @@ create the preset once in Resolve's Deliver page and save it under that exact na
 style profile to a preset that already exists (`project.GetRenderPresetList()` lists what's
 available).
 
+## Render reports "Complete" but the error is about a missing video stream
+
+This is `render.py` catching a real Resolve gotcha, not a false alarm: a `Complete` job status
+only means the render ran, not that it produced the file you asked for — `SetRenderSettings`
+layers its keys on top of whatever the Deliver page's render state already holds, so a stale
+"Audio Only" preset from an earlier Resolve session can survive into this build's job and produce
+an audio-only file in seconds. Open the Deliver page, confirm "Export Video" is checked and a
+video codec/format is selected under this project's render settings, then rerun. See
+`resolve_scripting_api.md`'s "Independently verified gotchas worth knowing" section.
+
+## A build fails with "AppendToTimeline placed N/M ..."
+
+Resolve silently drops a clip from a batch append when its record range overlaps an earlier one
+on the same track — no error from Resolve itself, just a shorter-than-expected result list, which
+`timeline_build.py`/`audio_design.py` now check for explicitly instead of trusting a non-empty
+return. If the message names video beats, rerun `validate_timeline.py` against `beat_plan.json`
+first — it already checks the beat list itself for gaps/overlaps, so it'll usually find the same
+collision at the planning stage. If it names SFX cues or a music bed segment, `validate_timeline.py`
+won't catch it (it only looks at `beats`, not `sfx`/`music_bed`) — check by hand for two SFX cues
+placed too close together on the same beat, or a `sfx[].at` offset that lands past the next beat's
+start.
+
 ## General principle
 
 Every stage before "build in Resolve" is cheap and deterministic to rerun — transcript, edit plan,

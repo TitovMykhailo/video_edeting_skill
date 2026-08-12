@@ -19,7 +19,7 @@ for how to apply it by hand in Fairlight when a project's music is dense enough 
 import math
 import sys
 
-from timeline_build import to_frame
+from timeline_build import _verify_append_count, to_frame
 
 # Property name Resolve's TimelineItem API uses for per-clip gain varies across versions and
 # isn't consistently documented — try the common one and degrade to a clear instruction if it
@@ -77,8 +77,14 @@ def build_sfx_track(media_pool, timeline, beat_plan, sfx_item_by_path, fps, trac
     # explicitly ordered/positioned sequence via recordFrame — there's no batch to reorder. Treated
     # as safe to zip positionally on that basis; if gains ever land on the wrong SFX clip, this
     # assumption is the first thing to re-check.
+    #
+    # The zip also depends on `result` having exactly one entry per clip_info — if two SFX cues
+    # land close enough together to overlap on this track, Resolve silently drops the later one
+    # from `result` instead of erroring (see timeline_build._verify_append_count), which would
+    # zip a survivor's gain onto the wrong clip with no error at all. Verify the count first.
     gains = [c.pop("_gain_db") for c in clip_infos]
     result = media_pool.AppendToTimeline(clip_infos) or []
+    _verify_append_count(result, clip_infos, "SFX cues")
     for item, gain_db in zip(result, gains):
         if gain_db:
             _set_gain_or_warn(item, gain_db, "an SFX clip")
@@ -128,6 +134,7 @@ def build_music_bed(media_pool, timeline, music_bed, music_item, narration_end_s
                     }
                 )
         placed = media_pool.AppendToTimeline(infos) or []
+        _verify_append_count(placed, infos, "music bed segments")
         for item in placed:
             _set_gain_or_warn(item, gain_db, "a music bed segment")
         return placed

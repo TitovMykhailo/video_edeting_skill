@@ -17,6 +17,19 @@ style.pacing.pause_threshold_s are "cuttable silence" — instead of deleting
 them outright (which sounds like a jump cut with no room tone) we keep a
 short real slice of that same silence, style.pacing.keep_pause_s long, taken
 from the source audio itself.
+
+Known blind spot this script can't fix on its own: an immediate spoken self-correction ("we
+launched— we shipped it in March") can land as ONE transcript word if the speaker barely pauses
+before the retake, since the pause is too short to register as a gap and Whisper can absorb the
+false start's tail into the next word's timing. Neither silence-based detection (this script) nor
+a filler-word list can see it, because nothing here looks wrong at the word level — it just reads
+as a normal, slightly long word. Independently documented by the davinci-resolve-mcp project's
+tighten-recording tooling as "swallowed retakes"; they also found duration-based heuristics
+(flagging unusually long words) to be the only detector that catches some of these, and even that
+one misses cases and isn't included here. If a rendered narration has an audible stutter-repeat
+that this script's `edit_plan.json` didn't remove, this is almost certainly why — fix it by hand
+in the source recording or script, not by tuning `pause_threshold_s` tighter (that trades this
+rare miss for cutting real, wanted pauses).
 """
 import argparse
 import json

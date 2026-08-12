@@ -314,6 +314,67 @@ while project.IsRenderingInProgress():
 status = project.GetRenderJobStatus(job_id)
 ```
 
+## Independently verified gotchas worth knowing
+
+The [davinci-resolve-mcp project](https://github.com/samuelgursky/davinci-resolve-mcp) (MIT
+licensed) ran a much larger, longer testing effort against the real scripting API than this skill
+has — hundreds of probes across GUI and headless Resolve, several Resolve versions, with every
+claim backed by a reproduced measurement. A few of their findings describe failure modes this
+skill's own code is exposed to; each is now guarded against, not just noted:
+
+- **`AppendToTimeline` silently drops overlapping placements.** When two `clipInfo` entries in
+  one batch resolve to overlapping record ranges on the same track, Resolve keeps the EARLIER one
+  and drops the LATER one from the returned list — no exception, nothing naming which one lost.
+  A non-empty return is not proof nothing was lost; only a count match (`len(result) ==
+  len(clip_infos)`) is. `scripts/resolve/timeline_build.py`'s `_verify_append_count()` checks this
+  after every batch append (video track, narration, SFX, music bed) and raises a clear error
+  pointing back to `validate_timeline.py` instead of silently producing a timeline that's short by
+  the number of collisions. This is on top of, not instead of, running `validate_timeline.py`
+  before the build — that catches the planning-stage overlap; this catches Resolve actually
+  acting on it differently than expected.
+- **`hasattr()` / bare `getattr()` don't work as capability probes on Resolve scripting objects.**
+  They were measured to report a callable/truthy result for effectively any attribute name,
+  invented or real, so `hasattr(project, "SomeMethod")` can't tell you whether `SomeMethod`
+  actually exists on this build. `scripts/resolve/render.py` used to gate a fallback on
+  `hasattr(project, "GetRenderPresetList")` — fixed to try the call directly inside a
+  `try/except` instead. If you're tempted to add a new "does this Resolve build support X"
+  check anywhere in this skill, don't reach for `hasattr`/bare `getattr` on a Resolve object;
+  wrap the real call in `try/except` instead.
+- **A `Complete` render job status doesn't mean the file has video in it.** `SetRenderSettings`
+  applies its keys on top of whatever the Deliver page's render state already holds (e.g. a
+  preset loaded in a previous session) rather than fully replacing it — a job can queue, run, and
+  report `Complete` in seconds while writing an audio-only file with no video stream, and nothing
+  in the job status says so. `scripts/resolve/render.py` now ffprobes the actual output file after
+  a `Complete` status and raises if no video stream is present (skips the check quietly if
+  `ffprobe` isn't installed, same as this skill's other optional ffprobe uses elsewhere).
+- **Mixed source/timeline frame rates floor when placed.** If a beat's media fps differs from the
+  project fps, `AppendToTimeline` converts the source frame range to timeline frames by flooring,
+  which can land a clip one frame short of an exact-fill slot. Not currently a scenario this
+  skill's own media is likely to hit (most footage matches the project's chosen fps), but worth
+  knowing if a build ever mixes frame rates and `validate_timeline.py` reports a 1-frame gap that
+  looks like it shouldn't be there.
+- **A Studio-only call on the free edition can pop a blocking modal that fails unrelated,
+  later calls too** — not just the gated call itself. Nothing in the return values names the
+  modal; an automated caller just sees a run of unexplained `False`/`None` returns from calls that
+  should have nothing to do with each other. This skill avoids Studio-gated calls by design (see
+  "Subtitles" above for why `CreateSubtitlesFromAudio` specifically is never used), but if a
+  future addition ever calls something Studio-only, check the edition first
+  (`resolve.GetProductName()` — `"DaVinci Resolve"` vs `"DaVinci Resolve Studio"`) rather than
+  discovering the gate by tripping it.
+- **Headless Resolve (`-nogui`) is a real, largely-working alternative**, not an unsupported
+  mode — their measurements showed ~86% exact parity with GUI Resolve across probed categories,
+  including render output. This skill doesn't attempt headless operation (everything here assumes
+  a GUI session, per Blackmagic's own scripting README), but it's worth knowing as an option for
+  a background/CI-style setup, with two sharp headless-specific traps to plan around: (1)
+  `ProjectManager.SaveProject()` on the never-saved default "Untitled Project" returns `False` in
+  the GUI but **hangs forever headless**, waiting on a Save-As dialog that can never appear — never
+  call `SaveProject` without first confirming the project has been named/saved once; (2) a Resolve
+  instance that comes up after an unclean shutdown can look fully healthy (answers
+  `GetVersionString`, `GetCurrentPage`, accepts connections) while having no project database
+  attached, in which case `CreateProject`/`LoadProject` return `False` forever with no other
+  symptom — `ProjectManager.GetCurrentDatabase()` returning non-`None` is the actual liveness
+  check, not a successful connection.
+
 ## Common errors and what they usually mean
 
 - `ImportError: No module named 'DaVinciResolveScript'` → env vars not set / wrong path for this
