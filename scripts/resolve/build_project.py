@@ -150,6 +150,33 @@ def main():
     print(f"Building video track from {len(beat_plan['beats'])} beats...", file=sys.stderr)
     video_items = timeline_build.build_video_track(media_pool, timeline, beat_plan, media_item_by_relpath, fps, track_index=1)
 
+    # Diagnostic-only, same investigation as the project-settings snapshot above: track-level
+    # enable is confirmed True and the clip/grade counts are both correct, yet a real render came
+    # out solid black. GetClipEnabled/Opacity/CompositeMode are documented, per-CLIP properties
+    # distinct from the track-level one already checked — none of this build's existing checks
+    # read any of them. Dumped per clip so a real culprit (a clip disabled, or opacity 0, or an
+    # unexpected composite mode) shows up directly instead of being guessed at.
+    try:
+        clip_diag = []
+        for item in video_items:
+            entry = {"name": item.GetName(), "start": item.GetStart(), "end": item.GetEnd()}
+            try:
+                entry["clip_enabled"] = item.GetClipEnabled()
+            except Exception as e:  # noqa: BLE001
+                entry["clip_enabled"] = f"ERROR: {e}"
+            for prop in ("Opacity", "CompositeMode", "Pan", "Tilt", "ZoomX", "ZoomY"):
+                try:
+                    entry[prop] = item.GetProperty(prop)
+                except Exception as e:  # noqa: BLE001
+                    entry[prop] = f"ERROR: {e}"
+            clip_diag.append(entry)
+        clip_diag_path = os.path.join(os.path.dirname(os.path.abspath(args.beat_plan)), "_resolve_clip_diagnostics.json")
+        with open(clip_diag_path, "w", encoding="utf-8") as f:
+            json.dump(clip_diag, f, ensure_ascii=False, indent=2, default=str)
+        print(f"Wrote per-clip diagnostics to {clip_diag_path}", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001 — diagnostic only, never fail the real build over this
+        print(f"WARNING: could not write per-clip diagnostics: {e}", file=sys.stderr)
+
     color_config = style.get("color")
     if color_config and color_config.get("grade_cdl"):
         print("Applying color grade to video clips...", file=sys.stderr)
