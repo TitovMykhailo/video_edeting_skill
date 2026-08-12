@@ -79,6 +79,21 @@ def main():
     project_setup.set_timeline_format(project, width, height, fps)
     print(f"Project '{args.project_name}' ready at {width}x{height}@{fps}fps.", file=sys.stderr)
 
+    # Diagnostic-only, written every run: Project.GetSetting() with no key returns a full
+    # snapshot of every queryable project setting (documented in Resolve's own shipped README).
+    # Written to disk instead of printed — some Resolve versions have hundreds of keys — so it
+    # can be read back directly after a run without needing the Console output pasted back in.
+    # Investigating a real case: correctly-placed, correctly-graded clips on an enabled track
+    # rendering solid black, which points at something project-level (most likely color
+    # management/color science) that none of the per-clip checks this build already does can see.
+    try:
+        settings_dump_path = os.path.join(os.path.dirname(os.path.abspath(args.beat_plan)), "_resolve_project_settings.json")
+        with open(settings_dump_path, "w", encoding="utf-8") as f:
+            json.dump(project.GetSetting(), f, ensure_ascii=False, indent=2, default=str)
+        print(f"Wrote project settings snapshot to {settings_dump_path}", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001 — diagnostic only, never fail the real build over this
+        print(f"WARNING: could not write project settings snapshot: {e}", file=sys.stderr)
+
     media_pool = project.GetMediaPool()
     root_folder = media_pool.GetRootFolder()
     narration_folder = timeline_build.get_or_create_folder(media_pool, root_folder, "Narration")
