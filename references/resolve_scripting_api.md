@@ -199,18 +199,27 @@ built:
 Convert seconds → frames with the project fps from the style profile (`round(seconds * fps)`);
 Resolve's API is frame-indexed throughout, there's no seconds-native call.
 
-## Subtitles (Tier 1 captions — default)
+## Subtitles (Tier 1 captions — default) — manual, not scriptable
 
-```python
-timeline.ImportIntoTimeline(srt_path, {
-    "autoImportSourceClipsIntoMediaPool": False,
-    "importSourceClips": False,
-})
-```
-This creates a subtitle track from the SRT. Set the subtitle track's look once, by hand, in the
-Edit page (Subtitles panel → style) the first time the user runs this — Resolve remembers a
-track's style, so this is a one-time setup, not a per-project chore. Document whatever style the
-user lands on in their style profile's `captions.style_notes` for reference.
+Importing an .srt onto the timeline is **not** something the documented API can do — confirmed
+against Resolve's own shipped README.txt (search it for "srt", "ImportSubtitle",
+"LoadSubtitle": nothing). `Timeline.ImportIntoTimeline(filePath, {options})` looks like the right
+call and previously shipped in this skill as one, but the README is explicit that it imports an
+**AAF** timeline-exchange file — an .srt path handed to it can't work, on any Resolve version;
+this wasn't a version-compatibility gap, it was calling the wrong method entirely, caught by a
+real build erroring out. The only subtitle-related scripting calls that exist are
+`AddTrack("subtitle")` / `GetTrackCount("subtitle")` (manage an empty subtitle track, don't fill
+it from a file) and `Timeline.CreateSubtitlesFromAudio({...})`, which is Studio-only and has
+Resolve's own AI re-transcribe the audio from scratch — it doesn't accept an existing .srt as
+input, so routing through it would throw away this skill's already-correct, word-aligned
+captions.srt timing for a fresh (and unaligned-to-the-cut-audio) transcription.
+
+So: `build_project.py` prints an instruction instead of attempting the import — File > Import >
+Subtitle in Resolve's own UI, manually, every time (exact menu wording varies a bit by version).
+Set the subtitle track's look once, by hand, in the Edit page (Subtitles panel → style) the first
+time the user runs this — Resolve remembers a track's style, so restyling isn't a per-project
+chore even though the import itself is manual every time. Document whatever style the user lands
+on in their style profile's `captions.style_notes` for reference.
 
 ## Word-pop animated captions (Tier 2 — optional upgrade, more setup)
 
@@ -259,6 +268,24 @@ For a fully custom look instead of a CDL push, `timelineItem.SetLUT(nodeIndex, l
 (.drx) — both are reasonable upgrades once a project has a locked-in look worth saving, but neither
 is exercised by this skill's scripts by default.
 
+## Narration audio: declicked before it ever reaches Resolve
+
+`build_project.py` and `build_otio.py` both call `scripts/render_narration_audio.py` first and
+place its output — not the original recording — as the narration clip. Reason: neither placed
+`edit_plan.json`'s `keep_segments` straight out of the original file, cut with no fade, used to
+be the whole approach; Resolve's scripting API has **no fade/crossfade control at all**
+(confirmed by grepping the shipped README.txt for "fade" — nothing), and OTIO's fade concept
+only applies across a Transition between two clips, not to a single continuous track's internal
+cuts. A narration with a few hundred `keep_segments` (a normal count for a few-minute video —
+every kept inter-word pause is its own cut) produced audible clicking/crackling on a real render,
+one hard amplitude discontinuity per cut. `render_narration_audio.py` fixes this upstream of
+Resolve entirely: it applies a short (default 8ms) fade in/out at each kept segment's own edges
+— never overlapping the next segment, so total duration and every downstream timestamp
+(`beat_plan.json`, `captions.srt`) stay exactly valid — then concatenates the pieces via
+ffmpeg's concat demuxer into one continuous file. `build_project.py` places that single file as
+one clip instead of iterating `keep_segments` on the timeline (`timeline_build.build_audio_track_declicked`) —
+simpler and only one timeline item instead of hundreds, not just quieter.
+
 ## Per-clip audio gain (music bed ducking, SFX levels)
 
 ```python
@@ -296,10 +323,9 @@ status = project.GetRenderJobStatus(job_id)
 - `AppendToTimeline` silently does nothing / returns an empty list → usually a bad `startFrame`/
   `endFrame` pair (out of the source clip's range) or an unimported `mediaPoolItem` (import it
   first, keep the returned object, don't re-resolve by path).
-- Subtitle import succeeds but no track appears → some Resolve versions need
-  `"insertAdditionalTracks": True` in the options dict, or the timeline needs to already have at
-  least one video/audio track before subtitle import; check the shipped README's exact signature
-  for the installed version if the call above doesn't produce a track.
+- Subtitle import — this skill doesn't attempt it via the API at all (see "Subtitles" above for
+  why `ImportIntoTimeline` can't work for an .srt); if a build's console output is telling you to
+  import captions manually, that's expected, not an error.
 - `SetCDL` returns `False` for every clip → check the CDL map's values are strings, not numbers or
   lists (`"1.0 1.0 1.0"`, not `[1.0, 1.0, 1.0]`) — `color_grade.py` already does this conversion,
   so this usually means a version mismatch worth checking against the shipped README.

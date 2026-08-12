@@ -49,6 +49,9 @@ import os
 import sys
 import subprocess
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # scripts/ root
+import render_narration_audio  # noqa: E402
+
 try:
     import opentimelineio as otio
 except ImportError:
@@ -170,16 +173,17 @@ def resolve_media_path(path, library):
     raise FileNotFoundError(f"Could not resolve media path '{path}' under library '{library}'")
 
 
-def build_narration_track(edit_plan, narration_abs, rate, duration_cache):
+def build_narration_track(edit_plan, declicked_abs, rate, duration_cache):
+    """Places the single already-declicked narration file (see
+    scripts/render_narration_audio.py) as one clip, rather than one clip per keep_segment cut
+    straight out of the original recording — the OTIO/Resolve import path has no fade/crossfade
+    control either (same as the scripting API — this isn't Resolve-specific, OTIO itself has no
+    fade concept beyond a Transition object crossing two clips, which doesn't apply to a single
+    continuous track's internal cuts), so un-declicked segments would click here exactly the way
+    they did going through build_project.py before that was fixed."""
     builder = TrackBuilder("Narration", otio.schema.TrackKind.Audio, rate)
-    for seg in edit_plan["keep_segments"]:
-        duration_s = seg["src_end"] - seg["src_start"]
-        if duration_s <= 0:
-            continue
-        builder.append_at(
-            seg["new_start"], duration_s,
-            external_ref(narration_abs, rate, duration_cache), seg["src_start"], "narration",
-        )
+    total_duration_s = edit_plan["total_new_duration_s"]
+    builder.append_at(0.0, total_duration_s, external_ref(declicked_abs, rate, duration_cache), 0.0, "narration")
     return builder.track
 
 
@@ -390,6 +394,10 @@ def main():
     rate = float(ratios[args.aspect]["fps"])
 
     narration_abs = os.path.abspath(args.narration_audio)
+    declicked_abs = os.path.abspath(os.path.join(os.path.dirname(args.edit_plan), "_narration_declicked.wav"))
+    print("Rendering declicked narration audio (fades each cut edge — see "
+          "scripts/render_narration_audio.py)...", file=sys.stderr)
+    render_narration_audio.render_declicked_narration(narration_abs, edit_plan, declicked_abs)
 
     timeline = otio.schema.Timeline(name=args.project_name)
     duration_cache = {}  # abs_path -> probed (or fallback) duration_s, shared across all tracks
@@ -398,7 +406,7 @@ def main():
     for t in broll_tracks:
         timeline.tracks.append(t)
 
-    timeline.tracks.append(build_narration_track(edit_plan, narration_abs, rate, duration_cache))
+    timeline.tracks.append(build_narration_track(edit_plan, declicked_abs, rate, duration_cache))
 
     sfx_tracks, sfx_gain_notes = build_sfx_tracks(beat_plan, sound_library, rate, duration_cache)
     for t in sfx_tracks:

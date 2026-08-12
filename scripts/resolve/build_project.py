@@ -24,7 +24,9 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_RESOLVE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _RESOLVE_DIR)
+sys.path.insert(0, os.path.dirname(_RESOLVE_DIR))  # scripts/ root, for render_narration_audio
 
 import audio_design  # noqa: E402
 import captions as captions_mod  # noqa: E402
@@ -32,6 +34,7 @@ import color_grade  # noqa: E402
 import connect  # noqa: E402
 import project_setup  # noqa: E402
 import render as render_mod  # noqa: E402
+import render_narration_audio  # noqa: E402
 import timeline_build  # noqa: E402
 
 
@@ -84,8 +87,12 @@ def main():
 
     import_cache = {}
     narration_abs = os.path.abspath(args.narration_audio)
-    timeline_build.import_into_bin(media_pool, narration_folder, [narration_abs], import_cache)
-    narration_item = import_cache[narration_abs]
+    declicked_path = os.path.join(os.path.dirname(args.edit_plan), "_narration_declicked.wav")
+    print("Rendering declicked narration audio (fades each cut edge — see "
+          "scripts/render_narration_audio.py)...", file=sys.stderr)
+    render_narration_audio.render_declicked_narration(narration_abs, edit_plan, declicked_path)
+    timeline_build.import_into_bin(media_pool, narration_folder, [declicked_path], import_cache)
+    narration_item = import_cache[declicked_path]
 
     beat_media_abs_paths = []
     beat_abs_by_relpath = {}
@@ -122,8 +129,8 @@ def main():
     project.SetCurrentTimeline(timeline)
     timeline_build.ensure_audio_tracks(timeline, 3)  # 1=narration, 2=SFX, 3=music bed
 
-    print(f"Building audio track from {len(edit_plan['keep_segments'])} kept segments...", file=sys.stderr)
-    timeline_build.build_audio_track(media_pool, timeline, narration_item, edit_plan["keep_segments"], fps, track_index=1)
+    print("Placing declicked narration...", file=sys.stderr)
+    timeline_build.build_audio_track_declicked(media_pool, timeline, narration_item, edit_plan["total_new_duration_s"], fps, track_index=1)
 
     print(f"Building video track from {len(beat_plan['beats'])} beats...", file=sys.stderr)
     video_items = timeline_build.build_video_track(media_pool, timeline, beat_plan, media_item_by_relpath, fps, track_index=1)
@@ -149,8 +156,7 @@ def main():
         )
 
     if args.captions and style.get("captions", {}).get("enabled", True):
-        print(f"Importing captions from {args.captions}...", file=sys.stderr)
-        captions_mod.import_srt(timeline, os.path.abspath(args.captions))
+        print(captions_mod.manual_import_message(os.path.abspath(args.captions)), file=sys.stderr)
 
     if args.render_out:
         print(f"Rendering draft to {args.render_out}...", file=sys.stderr)

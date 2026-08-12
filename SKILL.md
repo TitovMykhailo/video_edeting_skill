@@ -285,14 +285,21 @@ python3 scripts/resolve/build_project.py --project-name "<name>" --narration-aud
 (`--sound-library` defaults to `--media-library` if it's the same folder — pass it separately
 only when SFX/music live somewhere else.) This connects to the running Resolve instance,
 creates/opens the project, sets timeline resolution/fps from the style profile's aspect ratio,
-imports every media/sound file referenced by the edit plan and beat plan into organized Media
-Pool bins, builds the trimmed narration audio track plus separate SFX and music-bed audio tracks,
+renders a declicked narration track via `scripts/render_narration_audio.py` (fades every cut
+edge — Resolve's scripting API has no fade control at all, so hundreds of hard-cut
+`keep_segments` placed straight from the original recording will audibly click; see
+`references/resolve_scripting_api.md`'s "Narration audio" section), imports every media/sound
+file referenced by the edit plan and beat plan into organized Media Pool bins, builds the
+narration track (one clip, the declicked file) plus separate SFX and music-bed audio tracks,
 builds the video track from the beat plan, applies the style profile's color grade (CDL) to every
-video clip, imports the caption SRT as a subtitle track, and renders a draft MP4. It leaves the
-Resolve project open afterward for the user to fine-tune (fine color work, caption styling,
-manual trims, and audio levels if the gain-setting call didn't stick — it prints a clear warning
-when that happens, see `references/resolve_scripting_api.md`) — this skill gets them most of the
-way there, not a push-button final master. Tell the user that explicitly once it's done.
+video clip, and renders a draft MP4. It leaves the Resolve project open afterward for the user to
+fine-tune (fine color work, manual trims, and audio levels if the gain-setting call didn't
+stick — it prints a clear warning when that happens, see `references/resolve_scripting_api.md`)
+— this skill gets them most of the way there, not a push-button final master. Tell the user that
+explicitly once it's done, and that captions specifically need one manual step: importing
+`captions.srt` isn't scriptable in Resolve's documented API (see
+`references/resolve_scripting_api.md`'s "Subtitles" section for why) — the build's own console
+output tells the user to do File > Import > Subtitle by hand; that's expected, not a failure.
 
 If anything in this step errors, don't guess — read the Resolve error text (the API returns
 useful messages) and check `references/resolve_scripting_api.md`'s troubleshooting notes before

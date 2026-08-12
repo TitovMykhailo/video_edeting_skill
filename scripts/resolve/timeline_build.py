@@ -97,8 +97,36 @@ def import_into_bin(media_pool, folder, abs_paths, cache):
     return cache
 
 
+def build_audio_track_declicked(media_pool, timeline, narration_item, total_duration_s, fps, track_index=1):
+    """Place the ALREADY-declicked narration (see scripts/render_narration_audio.py) as one
+    single clip spanning the whole timeline. This is what build_project.py actually uses now —
+    see build_audio_track() below for why placing keep_segments directly, un-declicked, isn't
+    used anymore."""
+    end_frame = to_frame(total_duration_s, fps) - 1
+    clip_info = {
+        "mediaPoolItem": narration_item,
+        "startFrame": 0,
+        "endFrame": end_frame,
+        "trackIndex": track_index,
+        "mediaType": 2,
+    }
+    result = media_pool.AppendToTimeline([clip_info])
+    if not result:
+        raise RuntimeError(
+            "AppendToTimeline returned nothing for the narration audio track. Check the "
+            "declicked narration file imported correctly."
+        )
+    return result
+
+
 def build_audio_track(media_pool, timeline, narration_item, keep_segments, fps, track_index=1):
-    """Append the trimmed narration segments to an audio track, in order, back to back."""
+    """Append the trimmed narration segments to an audio track, in order, back to back, straight
+    out of the ORIGINAL (un-declicked) recording. Superseded by build_audio_track_declicked() —
+    every cut here is a hard amplitude discontinuity with no fade (Resolve's scripting API has
+    no fade/crossfade control at all — confirmed by grepping the shipped README.txt), and a
+    narration with a few hundred keep_segments produced audible clicking on a real render.
+    Kept only in case something ever needs the raw multi-segment placement directly; build_project.py
+    calls scripts/render_narration_audio.py first and uses build_audio_track_declicked() instead."""
     clip_infos = []
     for seg in keep_segments:
         start_frame = to_frame(seg["src_start"], fps)

@@ -28,7 +28,7 @@ def apply_grade(timeline_items, color_config, node_index="1"):
 
     applied = 0
     failed = []
-    for item in timeline_items:
+    for i, item in enumerate(timeline_items):
         try:
             ok = item.SetCDL(cdl_map)
         except Exception:  # noqa: BLE001 — a version-dependent API call, degrade per-clip not for the whole batch
@@ -36,12 +36,21 @@ def apply_grade(timeline_items, color_config, node_index="1"):
         if ok:
             applied += 1
         else:
-            name = None
+            # GetName() failing too (not just SetCDL) has been observed for a handful of items
+            # in one real run — falling back through GetClipProperty and a plain index means the
+            # warning still points at *something* locatable instead of a bare "<unknown clip>"
+            # that gives the user nothing to click on in Resolve.
+            label = None
             try:
-                name = item.GetName()
+                label = item.GetName()
             except Exception:  # noqa: BLE001
                 pass
-            failed.append(name or "<unknown clip>")
+            if not label:
+                try:
+                    label = item.GetClipProperty("File Path")
+                except Exception:  # noqa: BLE001
+                    pass
+            failed.append(label or f"<item #{i} in this track>")
 
     return applied, failed
 
