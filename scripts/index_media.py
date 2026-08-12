@@ -66,7 +66,23 @@ def load_index(library):
     path = os.path.join(library, INDEX_FILENAME)
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
+            index = json.load(f)
+        if not isinstance(index, dict) or "files" not in index:
+            # Reproduced live: pointing `scan`'s --out at this exact path (an easy mistake — the
+            # module docstring's own "the index lives at <library>/_media_index.json" line reads
+            # like the filename to use) overwrites the real index with scan's differently-shaped
+            # report ({library, already_tagged_count, needs_tagging}, no "files" key), and every
+            # later write-tags/query/scan call used to die on a bare `KeyError: 'files'` with no
+            # indication of what actually went wrong. scan's report and this index are different
+            # files by design — scan's --out is a free path for you to review, this index always
+            # lives at exactly <library>/_media_index.json and is only ever written by write-tags.
+            raise RuntimeError(
+                f"{path} doesn't look like a media index (expected a dict with a 'files' key, "
+                f"got: {list(index.keys()) if isinstance(index, dict) else type(index).__name__}). "
+                "If this came from `scan`'s --out, that's a separate report file, not the index — "
+                "don't point --out at this path. See the module docstring."
+            )
+        return index
     return {"files": {}}
 
 

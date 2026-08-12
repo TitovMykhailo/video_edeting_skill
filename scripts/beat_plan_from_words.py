@@ -32,9 +32,14 @@ rendered file — so generated-text/chart timing always matches the beat instead
 separately and hoping it lines up.
 
 generate.kind == "kinetic_text": pass through fields matching kinetic_text.py's CLI (text,
-    accent_words, accent, font_size, transparent, bg, fg).
+    accent_words, accent, font_size, transparent, bg, fg). accent_words may be a JSON list
+    (["GARAGE.", "TRILLION"]) or a single space-separated string — either is joined into the one
+    space-separated string kinetic_text.py's --accent-words actually expects.
 generate.kind == "chart": pass through fields matching chart.py's CLI (chart_type -> --type,
-    data, title, transparent, bg, fg, accent).
+    data, title, transparent, bg, fg, accent). `data` must be a JSON OBJECT of label -> number,
+    e.g. {"1998": 1, "Now": 100} — key order is preserved as category/x order. NOT a list of
+    {"label", "value"} objects; chart.py does data.keys()/data.values() directly on what --data
+    parses to.
 
 Usage:
     python3 beat_plan_from_words.py --edit-plan out/edit_plan.json --spec beat_spec.json \
@@ -132,7 +137,16 @@ def render_generated(gen, out_path, duration_s, fps):
             "--text", gen["text"], "--out", out_path, "--duration", str(duration_s), "--fps", fps_arg,
         ]
         if gen.get("accent_words"):
-            cmd += ["--accent-words", gen["accent_words"], "--accent", gen.get("accent", "#E0212B")]
+            # kinetic_text.py's --accent-words is one space-separated string (it does
+            # args.accent_words.split() internally) — but "accent_words" reads as a list, and a
+            # JSON list is what a spec author naturally reaches for. A list value used to be
+            # handed straight to subprocess.run() as one of its argv elements, which isn't a
+            # string and made subprocess.run's own list2cmdline() crash with a confusing
+            # "expected str, bytes or os.PathLike object, not list" — reproduced live. Accept
+            # both shapes.
+            aw = gen["accent_words"]
+            aw_str = " ".join(aw) if isinstance(aw, list) else aw
+            cmd += ["--accent-words", aw_str, "--accent", gen.get("accent", "#E0212B")]
         if gen.get("font_size"):
             cmd += ["--font-size", str(gen["font_size"])]
         if gen.get("bg"):

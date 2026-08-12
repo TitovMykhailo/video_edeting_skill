@@ -224,7 +224,12 @@ def main():
     for r in results:
         if not r.get("download_url"):
             continue
-        filename = f"{slugify(args.query)}-{r['id']}{r['ext']}"
+        # `r["id"]` comes straight from the provider's JSON response, same as `download_url` —
+        # slugify() it same as the (user-controlled but already-sanitized) query, rather than
+        # trusting it to always be a bare integer, so a path-separator/traversal character in an
+        # unexpected id shape from a future provider (or a compromised/spoofed response) can't
+        # land outside provider_dir via os.path.join.
+        filename = f"{slugify(args.query)}-{slugify(str(r['id']), max_len=40)}{r['ext']}"
         dest_path = os.path.join(provider_dir, filename)
         try:
             download(r["download_url"], dest_path)

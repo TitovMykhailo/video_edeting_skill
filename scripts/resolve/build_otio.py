@@ -81,6 +81,29 @@ def ffprobe_duration_s(abs_path):
         return None
 
 
+def frame_exact_span_s(start_s, end_s, rate):
+    """Round `start_s`/`end_s` to the nearest frame at `rate` INDEPENDENTLY, then return the gap
+    between those two frame numbers, in seconds — not `end_s - start_s` directly.
+
+    Why this matters: beat_plan.json's beat boundaries come straight from Whisper word
+    timestamps, which essentially never land exactly on a frame boundary at the project's fps.
+    Subtracting the raw seconds first (e.g. 9.94 - 6.42 = 3.52) and comparing that against a
+    generated/rendered clip's real duration (e.g. exactly 3.5s, because it was rendered at an
+    explicit frame count) makes a clip that's actually frame-exact for this beat look shorter
+    than it — every duration TrackBuilder.append_at ultimately writes gets frame-rounded via its
+    own _rt() anyway, just too late to prevent this function's caller from already deciding
+    (wrongly) that the beat needs a gap or a loop repeat. Reproduced live: a beat computed this
+    way as "3.52s" against a clip rendered at exactly 105 frames (3.5s at 30fps) left a real
+    1-frame gap in the resulting .otio file between that beat and the next one, invisible to
+    validate_timeline.py because it only checks beat_plan.json's own claimed seconds, not the
+    OTIO file this function's caller actually produces. Rounding each boundary to its own frame
+    first (193 and 298) and taking the frame difference (105 -> 3.5s exactly) matches what
+    timeline_build.py's build_video_track already does for the Studio path, and matches what
+    TrackBuilder._rt will round each placed clip to regardless — so comparisons made against
+    this value stay consistent with what actually lands in the file."""
+    return (round(end_s * rate) - round(start_s * rate)) / rate
+
+
 class TrackBuilder:
     """Appends clips/gaps to an OTIO Track at explicit absolute start times.
 
@@ -196,33 +219,48 @@ def build_broll_tracks(beat_plan, media_library, rate, duration_cache):
         media = beat["media"]
         abs_path = resolve_media_path(media["path"], media_library)
         beat_start_s, beat_end_s = beat["start"], beat["end"]
-        beat_len_s = beat_end_s - beat_start_s
-        clip_len_s = media["src_out"] - media["src_in"]
-        if beat_len_s <= 0 or clip_len_s <= 0:
+        # Anchor every item's placement to FRAME NUMBERS derived independently from each
+        # boundary, the same way timeline_build.py's build_video_track does for the Studio path
+        # — not to beat_start_s + a computed duration. beat_plan_from_words.py guarantees each
+        # beat's start equals the previous beat's end AS THE SAME JSON FLOAT, so rounding each
+        # boundary to its own frame independently is guaranteed to produce matching frame numbers
+        # at a shared boundary; deriving an item's end from start-plus-duration instead doesn't
+        # have that guarantee once the duration itself gets frame-rounded, and drifts. Reproduced
+        # live: computing end_s as beat_start_s + frame-rounded-duration left consecutive beats
+        # off by a fraction of a frame, which pack_into_tracks then read as a genuine overlap and
+        # bumped the later beat to a whole new lane — worse than the 1-frame gap it was meant to
+        # fix. Anchoring both ends to independently-rounded frame numbers avoids both failure
+        # modes at once.
+        beat_start_frame = round(beat_start_s * rate)
+        beat_end_frame = round(beat_end_s * rate)
+        beat_len_frames = beat_end_frame - beat_start_frame
+        clip_len_frames = round(media["src_out"] * rate) - round(media["src_in"] * rate)
+        if beat_len_frames <= 0 or clip_len_frames <= 0:
             continue
 
-        if media.get("loop") and clip_len_s < beat_len_s:
-            repeats = math.ceil(beat_len_s / clip_len_s)
+        if media.get("loop") and clip_len_frames < beat_len_frames:
+            repeats = math.ceil(beat_len_frames / clip_len_frames)
             for i in range(repeats):
-                remaining = beat_len_s - i * clip_len_s
-                this_len = min(clip_len_s, remaining)
+                remaining = beat_len_frames - i * clip_len_frames
+                this_len_frames = min(clip_len_frames, remaining)
+                start_frame = beat_start_frame + i * clip_len_frames
                 items.append({
-                    "start_s": beat_start_s + i * clip_len_s, "end_s": beat_start_s + i * clip_len_s + this_len,
-                    "abs_path": abs_path, "source_in_s": media["src_in"], "duration_s": this_len,
+                    "start_s": start_frame / rate, "end_s": (start_frame + this_len_frames) / rate,
+                    "abs_path": abs_path, "source_in_s": media["src_in"], "duration_s": this_len_frames / rate,
                     "name": os.path.basename(media["path"]),
                 })
         else:
-            if clip_len_s < beat_len_s:
+            if clip_len_frames < beat_len_frames:
                 notes.append(
-                    f"- Beat at {beat_start_s}s uses `{media['path']}` ({clip_len_s:.2f}s) which is "
-                    f"shorter than the beat ({beat_len_s:.2f}s) and isn't set to loop — there will be "
-                    "a gap on the B-Roll track for the remainder. Set `\"loop\": true`, trim the beat, "
-                    "or pick a longer clip."
+                    f"- Beat at {beat_start_s}s uses `{media['path']}` ({clip_len_frames / rate:.2f}s) which "
+                    f"is shorter than the beat ({beat_len_frames / rate:.2f}s) and isn't set to loop — there "
+                    "will be a gap on the B-Roll track for the remainder. Set `\"loop\": true`, trim the "
+                    "beat, or pick a longer clip."
                 )
-            this_len = min(clip_len_s, beat_len_s)
+            this_len_frames = min(clip_len_frames, beat_len_frames)
             items.append({
-                "start_s": beat_start_s, "end_s": beat_start_s + this_len,
-                "abs_path": abs_path, "source_in_s": media["src_in"], "duration_s": this_len,
+                "start_s": beat_start_frame / rate, "end_s": (beat_start_frame + this_len_frames) / rate,
+                "abs_path": abs_path, "source_in_s": media["src_in"], "duration_s": this_len_frames / rate,
                 "name": os.path.basename(media["path"]),
             })
 
@@ -283,7 +321,7 @@ def build_music_track(music_bed, sound_library, narration_end_s, total_duration_
     gain_notes = []
 
     def place_span(span_start_s, span_end_s, gain_db, label):
-        span_len_s = span_end_s - span_start_s
+        span_len_s = frame_exact_span_s(span_start_s, span_end_s, rate)
         if span_len_s <= 0:
             return
         gain_notes.append(f"- Music bed, {label} span ({span_start_s:.2f}s-{span_end_s:.2f}s): {gain_db} dB")

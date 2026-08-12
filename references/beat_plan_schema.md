@@ -70,7 +70,17 @@ built from. Never mix the two coordinate spaces.
 
 All timing here is already on the new (post-cut) timeline.
 
-## `beat_plan.json` (you write this, following step 5 in SKILL.md)
+## `beat_plan.json` (built by `scripts/beat_plan_from_words.py` from a spec you write — see step 5 in SKILL.md)
+
+Whenever `edit_plan.json` has real (`audio_derived`) timing, build this file with
+`scripts/beat_plan_from_words.py` rather than hand-writing the JSON below directly — it derives
+every beat's `start`/`end` from the previous beat's end and the real word timeline by
+construction, so the gap/overlap class of bug this schema's fields exist partly to catch can't
+happen in the first place. You still write the creative decisions (which beat covers which words,
+what media/generate/sfx it gets, the reasoning) — just as a smaller spec file, not this full
+schema. Hand-write `beat_plan.json` directly only for a `"provisional"`-timing, from-scratch
+design pass with no real transcript yet (the script requires one). See step 5 in SKILL.md for the
+spec format and exact command.
 
 ```jsonc
 {

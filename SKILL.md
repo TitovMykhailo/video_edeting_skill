@@ -24,6 +24,26 @@ judgment framework behind that decision-making (attention, depth, light, motion,
 correspondence) — read it before beat-planning anything where the visual/audio craft matters, not
 just the cut timing.
 
+**Why any of this — the point of the whole pipeline is that a viewer keeps watching.** Every stage
+below exists in service of a short list of things that actually earn attention, all covered in
+depth in `references/cinematic_principles.md` and `references/editor_discipline.md` — this is the
+condensed version to hold in mind while beat-planning, not a replacement for reading either file:
+
+- **The first ~3 seconds are the hook, not a preamble.** Start on it — no logo, no throat-clearing.
+  A hook makes a viewer want to understand what they're seeing or what happens next; it doesn't
+  trick them into clicking (cinematic_principles.md's "Hook design").
+- **Every beat needs a stated reason it holds attention** — a question, anticipation, an unfinished
+  action, an information gap, emotion, beauty, humor, surprise, stakes, scale, a pattern, or a
+  promise made earlier. "It's fast" is not one on its own (editor_discipline.md Part 25).
+- **Vary intensity on purpose** (the style profile's `energy_curve`) — sustained peak everywhere
+  reads as flat; a viewer needs contrast to feel a peak as a peak.
+- **Track every setup to a payoff timestamp.** A teased element or open question that never
+  resolves is a bug in the plan, not intrigue (editor_discipline.md Part 26).
+- **Sound does work on every cut**, not just the picture — a cut that changes only what's on
+  screen is half a cut (editor_discipline.md Part 10).
+- **Not every second can be peak density.** Compression needs a release beat, or the peaks stop
+  reading as peaks (editor_discipline.md Part 20).
+
 ## Two other capabilities that don't need Resolve at all
 
 Most of this file describes the build pipeline (transcribe → cut → caption → tag media → plan
@@ -232,8 +252,38 @@ for concrete mixing techniques beyond what this pipeline automates: layering com
 frequencies for a beat that needs real weight, a De-esser-as-frequency-carve duck for a dense music
 bed, reversed-beat risers and nested-reverb tails for trimming a track to fit, and "emotional
 realism" (deliberately mismatched but thematically resonant sound) as an option for `emotional_beat`
-beats. Write the final per-beat decisions, including `sfx` and the top-level `music_bed`,
-to `out/beat_plan.json` in the schema doc's format (`references/beat_plan_schema.md`).
+beats.
+
+**Build `out/beat_plan.json` with `scripts/beat_plan_from_words.py`, not by hand-writing the JSON
+— this is the normal case, whenever step 1 transcribed real audio.** Hand-computing each beat's
+`start`/`end` against a real transcript is exactly the arithmetic that produced actual timeline
+gaps in this skill's own earlier work (two multi-second gaps from act-duration budgets never
+cross-checked against real word timing — see `references/editor_discipline.md`'s "timing is
+non-negotiable"). The script removes that failure mode by construction: write your per-beat
+creative decisions as a spec file —
+```json
+[
+  {"end_word": 42, "intent": "keyword_meme", "media": {"path": "memes/x.mp4"}, "sfx": [...], "reasoning": "..."},
+  {"end_word": 90, "intent": "illustrative", "generate": {"kind": "chart", "data": {...}, "title": "..."}, "reasoning": "..."}
+]
+```
+(`end_word` is a 0-based, exclusive index into `edit_plan.json`'s `words_new_timeline`; the spec
+must end with `end_word == len(words_new_timeline)`) — then run:
+```bash
+python3 scripts/beat_plan_from_words.py --edit-plan out/edit_plan.json --spec out/beat_spec.json \
+  --generated-dir out/generated --media-library <path-to-library> --out out/beat_plan.json \
+  --fps <fps from the style profile's aspect_ratios entry> \
+  --music-bed '{"path": "music/bed.mp3", "loop": true}'
+```
+Each beat's start is always the previous beat's end and the first/last beats always span
+`0.0`→`total_new_duration_s`, so there's no arithmetic step where a gap or overlap could be
+introduced — and for `"generate"` beats it actually renders the clip at the beat's exact computed
+duration (via `scripts/generate/kinetic_text.py`/`chart.py`) instead of guessing a duration
+separately and hoping it lines up. Only fall back to writing `beat_plan.json` directly when
+there's no real transcript to key off — a `"provisional"`-timing, from-scratch design pass ahead
+of recording (see below); the script requires `edit_plan.json`'s real `words_new_timeline` and
+can't run without it. Add `sfx`/`music_bed` to the spec's beats and top-level flag respectively —
+see `references/beat_plan_schema.md` for the full field set.
 
 **Before this beat plan is "done," two more things are non-negotiable — see
 `references/editor_discipline.md` for the full reasoning behind both:**
