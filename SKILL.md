@@ -222,10 +222,17 @@ file paths) so you naturally avoid reusing the same meme twice in one video.
 it earns an SFX cue per the style profile's `sound_design.sfx_triggers` (most beats shouldn't —
 `sfx_not_on_every_cut` is there for a reason) and, once, decide the whole video's `music_bed` (or
 that it doesn't need one). Query the sound library the same way as visuals —
-`index_media.py query --library <path> --kind audio --tags "whoosh" --limit 5` for an SFX cue,
-`--kind audio --tags "lofi,background" --mood <mood>` for a bed — and use `energy`/`loopable` in
-the results to judge fit (a `percussive` one-shot for a cut accent, a `sustained`+`loopable` one
-for a bed). Write the final per-beat decisions, including `sfx` and the top-level `music_bed`,
+`index_media.py query --library <path> --kind audio --pack <name> --tags "whoosh" --limit 5` for an
+SFX cue, `--kind audio --pack <name> --tags "lofi,background" --mood <mood>` for a bed — and use
+`energy`/`loopable` in the results to judge fit (a `percussive` one-shot for a cut accent, a
+`sustained`+`loopable` one for a bed). Pass `--pack` once a project has settled on one sound
+pack/library and stay inside it — see `references/sound_mixing_techniques.md` for why this single
+habit (not mixing SFX genres within one project) matters more than any individual sound choice, and
+for concrete mixing techniques beyond what this pipeline automates: layering complementary
+frequencies for a beat that needs real weight, a De-esser-as-frequency-carve duck for a dense music
+bed, reversed-beat risers and nested-reverb tails for trimming a track to fit, and "emotional
+realism" (deliberately mismatched but thematically resonant sound) as an option for `emotional_beat`
+beats. Write the final per-beat decisions, including `sfx` and the top-level `music_bed`,
 to `out/beat_plan.json` in the schema doc's format (`references/beat_plan_schema.md`).
 
 **Before this beat plan is "done," two more things are non-negotiable — see

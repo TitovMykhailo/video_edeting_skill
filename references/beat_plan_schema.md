@@ -81,7 +81,8 @@ All timing here is already on the new (post-cut) timeline.
     "path": "music/lofi-bed-01.mp3",
     "loop": true,
     "base_gain_db": -18.0,
-    "duck_gain_db": -26.0
+    "duck_gain_db": -26.0,
+    "manual_polish_notes": "lead-in: reverse the track's opening beat as a riser; lead-out: nest+reverb the final beat (Great Hall preset). Not automated — see references/sound_mixing_techniques.md."
   },
   "beats": [
     {
@@ -97,7 +98,9 @@ All timing here is already on the new (post-cut) timeline.
         "loop": false
       },
       "sfx": [
-        { "at": 0.0, "path": "sfx/whoosh-01.wav", "gain_db": -6.0 }
+        { "at": 0.0, "path": "sfx/whoosh-01.wav", "gain_db": -6.0, "frequency_layer": "high" }
+        // add a second entry at the same `at` with "frequency_layer": "low" for a beat that
+        // needs real weight — see "Sound design fields" below and references/sound_mixing_techniques.md
       ],
       "shot_size": "close_up",              // optional, see "Richer shot design fields" below
       "attention_note": "eyes are the sole focal point, nothing else competes",   // optional
@@ -147,7 +150,10 @@ Guidance on filling this in:
 - **`intent: emotional_beat`** — the narration's tone (not its literal content) is what's driving
   the pick: flat/matter-of-fact explanation gets a deadpan or absurdist cutaway, a punchline gets
   a reaction clip, building tension gets something visually tense. This is the intent that needs
-  the `mood` field from the media index most.
+  the `mood` field from the media index most. The sound side has an equivalent move available:
+  "emotional realism" — deliberately scoring the beat with a thematically-resonant but literally
+  mismatched sound category instead of a diegetic one (see `references/sound_mixing_techniques.md`)
+  — occasional and only when the beat's point is genuinely thematic, not a default.
 - **`intent: filler`** — nothing specific fits, or inserting something specific would be
   distracting during a dense explanation the viewer needs to actually follow. Pull from
   `media.filler_categories` in the style profile. This is not a failure case — plenty of good
@@ -169,12 +175,18 @@ Guidance on filling this in:
 
 - **Top-level `music_bed`** (optional — omit entirely if the video should run without one) is a
   single background track for the whole video, queried from the sound library with
-  `index_media.py query --kind audio --tags "..." --mood ...` guided by the style profile's
-  `sound_design.music_bed` notes and the overall tone of the script. `base_gain_db` is its normal
-  level; `duck_gain_db` is the lower level it should sit at under narration (a real, if crude,
-  substitute for sidechain compression — see `resolve/audio_design.py` and
-  `resolve_scripting_api.md` for how gain gets applied per-version-dependent Resolve APIs). Pick
-  `loop: true` for anything shorter than the total runtime.
+  `index_media.py query --kind audio --pack <name> --tags "..." --mood ...` guided by the style
+  profile's `sound_design.music_bed` notes and the overall tone of the script (pass `--pack` once a
+  project has settled on one sound pack — see `references/sound_mixing_techniques.md`'s
+  genre-consistency guidance). `base_gain_db` is its normal level; `duck_gain_db` is the lower
+  level it should sit at under narration (a real, if crude, substitute for sidechain compression —
+  see `resolve/audio_design.py` and `resolve_scripting_api.md` for how gain gets applied
+  per-version-dependent Resolve APIs). Pick `loop: true` for anything shorter than the total
+  runtime. **`manual_polish_notes`** (optional, free text, not read by any script) is where to
+  write down a reversed-beat riser lead-in, a nested+reverb lead-out, or a De-esser frequency-carve
+  duck — real techniques `references/sound_mixing_techniques.md` documents in detail, none of them
+  scriptable against Resolve's API, so the intent gets handed to the human editor as a note instead
+  of silently dropped.
 - **Per-beat `sfx`** is a list (usually empty, sometimes one item, rarely more) of one-shot sounds
   timed to a specific moment *within* the beat — `at` is seconds from the beat's own `start`, not
   the timeline's start. Don't reach for "add a sound to this object" — the actual rule (see
@@ -183,7 +195,13 @@ Guidance on filling this in:
   Reserve these for the moments the style profile's `sound_design.sfx_triggers` actually names —
   per `sound_design.sfx_not_on_every_cut`, a sound effect on every single beat reads as noisy and
   cheap rather than punchy. Query the sound library the same way as visuals:
-  `index_media.py query --kind audio --tags "whoosh,transition" --limit 5`.
+  `index_media.py query --kind audio --tags "whoosh,transition" --limit 5`. For a beat that
+  genuinely needs weight (an escalation/hero moment), stack two or three entries at the same `at`
+  with complementary `frequency_layer` values (`"low"` / `"mid"` / `"high"`) instead of one loud
+  sound — see `references/sound_mixing_techniques.md`'s frequency-layering technique; this is an
+  optional annotation, `audio_design.py` already places every entry in the list independently, it
+  doesn't need `frequency_layer` to do so — the field exists to make the layering a deliberate
+  choice of complementary sounds while picking them, not an accident.
 - Silence is a valid choice for both fields. Not every project needs a music bed, and most beats
   should have an empty `sfx` list — the goal is a few well-placed sounds, not constant coverage.
   Deliberately reserving a beat with no SFX and a lower music bed right before a big reveal (an

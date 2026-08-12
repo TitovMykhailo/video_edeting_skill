@@ -309,6 +309,10 @@ def cmd_write_tags(args):
             "quality_ok": tag_data.get("quality_ok", True),
             "quality_notes": tag_data.get("quality_notes", ""),
             "source": tag_data.get("source", "own_library"),
+            # which sound pack/library this asset came from (e.g. "happy-editing-transitions") —
+            # lets query --pack keep a whole project inside one consistent sonic palette instead
+            # of free-mixing across every tagged asset; see references/sound_mixing_techniques.md
+            "pack": tag_data.get("pack"),
             # audio-only fields (SFX/music) — left null for visual assets, see
             # references/media_tagging_schema.md
             "energy": tag_data.get("energy"),
@@ -343,6 +347,8 @@ def cmd_query(args):
                 continue
         if args.kind and entry.get("kind") != args.kind:
             continue
+        if args.pack and (entry.get("pack") or "").lower() != args.pack.lower():
+            continue
 
         score = 0.0
         reasons = []
@@ -374,6 +380,7 @@ def cmd_query(args):
                 {
                     "path": rel_path,
                     "kind": entry.get("kind"),
+                    "pack": entry.get("pack"),
                     "score": round(score, 2),
                     "reasons": reasons,
                     "probe": entry.get("probe"),
@@ -411,7 +418,7 @@ def main():
 
     p_write = sub.add_parser("write-tags", help="commit tags into the persistent index")
     p_write.add_argument("--library", required=True)
-    p_write.add_argument("--tags", required=True, help="JSON file: {relative_path: {tags, description, mood, quality_ok, quality_notes, source, energy, loopable, tempo_bpm}} — the last three are audio-only, see references/media_tagging_schema.md")
+    p_write.add_argument("--tags", required=True, help="JSON file: {relative_path: {tags, description, mood, quality_ok, quality_notes, source, pack, energy, loopable, tempo_bpm}} — pack is which sound pack/library the asset came from (audio-relevant but not audio-only); energy/loopable/tempo_bpm are audio-only, see references/media_tagging_schema.md")
     p_write.set_defaults(func=cmd_write_tags)
 
     p_query = sub.add_parser("query", help="search the tagged index")
@@ -419,6 +426,7 @@ def main():
     p_query.add_argument("--tags", default="", help="comma-separated tags/keywords")
     p_query.add_argument("--mood")
     p_query.add_argument("--kind", choices=["video", "image", "gif", "audio"], help="restrict to one asset kind, e.g. 'audio' when picking SFX/music")
+    p_query.add_argument("--pack", help="restrict to one sound pack/library (e.g. 'happy-editing-transitions') to keep a project's SFX genre-consistent — see references/sound_mixing_techniques.md")
     p_query.add_argument("--orientation", choices=["landscape", "portrait", "square"])
     p_query.add_argument("--allow-low-quality", action="store_true")
     p_query.add_argument("--exclude-recent", help="path to a JSON list of recently used relative paths")

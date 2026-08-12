@@ -102,7 +102,8 @@
     "music_bed": { "role": "sits lower under A-roll, even lower under screen tutorials; near-silent during interview/podcast segments", "ducking": "lower under narration — see references/beat_plan_schema.md music_bed field" },
     "sfx_triggers": ["ui_highlight_click", "reaction_whoosh", "meme_stinger", "punch_in_emphasis"],
     "sfx_not_on_every_cut": true,
-    "silence": "Let a genuinely strong on-camera line land with just room tone under it before cutting to the next beat — don't rush a reaction with a sound effect."
+    "silence": "Let a genuinely strong on-camera line land with just room tone under it before cutting to the next beat — don't rush a reaction with a sound effect.",
+    "pack_discipline": "Pick one sound pack (query with --pack) for UI/reaction stingers rather than mixing sources — light, tech/UI-appropriate clicks and whooshes to match the natural-tech-warm look; nothing that reads as corporate-stock or overly polished, this channel's identity is a person, not a brand kit."
   },
 
   "media": {

@@ -9,6 +9,12 @@ in the middle). So the music bed only needs two gain levels: `duck_gain_db` for 
 narration span, and `base_gain_db` for any narration-free tail (an outro that runs longer than
 the narration, if the beat plan has one). That's honest given what we can actually automate, and
 covers the common case correctly.
+
+A sharper technique exists beyond this — a De-esser (mis)used as a mid-frequency carve on the
+music bus, ducking just the band the voice sits in instead of the whole track — but it needs an
+audio effect plugin added to a track, which isn't something this script attempts against Resolve's
+API (see references/sound_mixing_techniques.md's "frequency-carve ducking" section for why, and
+for how to apply it by hand in Fairlight when a project's music is dense enough to need it).
 """
 import math
 import sys

@@ -31,6 +31,8 @@ same scan/write-tags/query workflow; `scripts/index_media.py` keeps one file at 
       "quality_notes": "",
       "source": "own_library",                         // "own_library" | "stock:pexels" | "stock:pixabay" | "stock:giphy"
                                                             // | "generated:kinetic_text" | "generated:chart" | "generated:html_motion"
+      "pack": null,                                        // which sound pack/library this came from (e.g. "happy-editing-transitions"),
+                                                            // mainly meaningful for audio — see references/sound_mixing_techniques.md
       "energy": null,                                     // audio-only, see below
       "loopable": null,                                    // audio-only
       "tempo_bpm": null,                                  // audio-only
@@ -83,6 +85,12 @@ structure the user already organized (`sfx/`, `music/`, `sfx/transitions/`). The
 
 - **`tags`**: same idea as visual tags — what it *is* ("whoosh", "click", "riser") plus what it's
   *for* ("transition", "reveal", "punchline", "background-bed").
+- **`pack`**: which pack/library the file came from (e.g. `"happy-editing-transitions"`,
+  `"artlist-corporate"`) — infer it from the folder it landed in under `_stock_cache/` or
+  wherever the user dropped a downloaded pack. This is what lets `query --pack <name>` keep a
+  whole project's SFX genre-consistent instead of free-mixing across everything ever tagged — see
+  `references/sound_mixing_techniques.md`, this is the single highest-leverage habit for a
+  coherent-sounding edit. Leave `null` for one-off files that don't belong to any pack.
 - **`mood`**: same field as visual assets, same purpose — lets a beat's emotional register (from
   `beat_plan.json`) pull a mood-matched sound the same way it pulls a mood-matched cutaway.
 - **`energy`**: `"percussive"` | `"sustained"` | `"impact"` | `"ambient"` — your read of the
@@ -104,6 +112,7 @@ structure the user already organized (`sfx/`, `music/`, `sfx/transitions/`). The
     {
       "path": "relative/path/clip.mp4",
       "kind": "video",
+      "pack": null,
       "score": 3.4,
       "reasons": ["tag match: cooking", "tag match: kitchen", "mood match: chaotic-energetic"],
       "probe": { "...": "as above" },
@@ -123,7 +132,9 @@ shortlist candidates, not to pick for you — always read `description`/`tags` o
 choose with judgment, same as a human editor scanning a bin. Pass `--kind audio` to search only
 the sound library (e.g. when picking a beat's `sfx` or the video's `music_bed` — see
 `beat_plan_schema.md`), or `--kind video`/`image`/`gif` to keep visual queries from surfacing
-sound files by accident.
+sound files by accident. Add `--pack <name>` once a project has settled on a sound pack to stay
+inside it for every subsequent SFX/music query — a hard filter, not a scoring bonus, since the
+whole point is not seeing options from other packs at all.
 
 ## Stock providers (`fetch_stock.py`)
 

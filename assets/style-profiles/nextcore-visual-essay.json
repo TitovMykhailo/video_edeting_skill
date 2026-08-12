@@ -114,7 +114,8 @@
     "music_bed": { "role": "supports pacing, must never compete with the VO", "ducking": "lower under narration — see references/beat_plan_schema.md music_bed field" },
     "sfx_triggers": ["semantic_cut", "new_evidence_reveal", "big_number_reveal", "punchline"],
     "sfx_not_on_every_cut": true,
-    "silence": "Use a beat of near-silence (VO + faint bed only, no SFX) right before the escalation beat's payoff so the payoff's sound actually lands."
+    "silence": "Use a beat of near-silence (VO + faint bed only, no SFX) right before the escalation beat's payoff so the payoff's sound actually lands.",
+    "pack_discipline": "Pick one sound pack (query with --pack) for the whole project rather than free-mixing across the library — clean, punchy, modern hits/whooshes to match the editorial-contrast graphic style; avoid anything gritty/lo-fi unless a specific beat calls for texture on purpose."
   },
 
   "media": {
