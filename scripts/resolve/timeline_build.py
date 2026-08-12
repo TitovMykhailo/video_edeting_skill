@@ -249,4 +249,20 @@ def build_video_track(media_pool, timeline, beat_plan, media_item_by_path, fps, 
             "way, or a startFrame/endFrame outside the source clip's real duration."
         )
     _verify_append_count(result, clip_infos, "video beats")
+
+    # A track can hold correctly-placed clips and still render solid black if it's disabled for
+    # output — data-level checks (append count, grade-applied count) can't see this, since none
+    # of them touch enable state. Force it on and read back to confirm, rather than leaving this
+    # as something to go check by hand in the UI: SetTrackEnable/GetIsTrackEnabled are both
+    # documented in Resolve's own shipped scripting README. Printed either way so a real failure
+    # here (SetTrackEnable returning False, or the readback still coming back disabled) shows up
+    # in the console instead of silently producing another black render.
+    timeline.SetTrackEnable("video", track_index, True)
+    is_enabled = timeline.GetIsTrackEnabled("video", track_index)
+    print(f"Video track {track_index} enabled: {is_enabled}", file=sys.stderr)
+    if not is_enabled:
+        raise RuntimeError(
+            f"Video track {track_index} is still disabled after SetTrackEnable — check the Edit "
+            "page's track header by hand, something is overriding this."
+        )
     return result
