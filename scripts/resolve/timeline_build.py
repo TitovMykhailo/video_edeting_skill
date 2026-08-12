@@ -21,6 +21,32 @@ def get_or_create_folder(media_pool, root_folder, name):
     return media_pool.AddSubFolder(root_folder, name)
 
 
+def ensure_empty_timeline(media_pool, project, name):
+    """Create a fresh empty timeline named `name`, deleting any existing one with that name
+    first. Without this, re-running build_project.py after ANY failure downstream of timeline
+    creation (a bad clip, AppendToTimeline rejecting the batch, a crash) leaves a same-named
+    timeline behind, and the next attempt fails immediately at CreateEmptyTimeline with no
+    indication that the fix is to go delete a leftover timeline by hand in Resolve's UI — caught
+    exactly this way on a real production run. Re-running this script should be safe to just
+    retry, not require manual cleanup first."""
+    existing = None
+    for i in range(1, project.GetTimelineCount() + 1):
+        tl = project.GetTimelineByIndex(i)
+        if tl and tl.GetName() == name:
+            existing = tl
+            break
+    if existing is not None:
+        media_pool.DeleteTimelines([existing])
+
+    timeline = media_pool.CreateEmptyTimeline(name)
+    if timeline is None:
+        raise RuntimeError(
+            f"CreateEmptyTimeline('{name}') failed even after removing any existing timeline "
+            "with that name. Check the project isn't in a bad state (e.g. still rendering)."
+        )
+    return timeline
+
+
 def ensure_audio_tracks(timeline, count):
     """Make sure the timeline has at least `count` audio tracks (narration=1, SFX=2, music=3)."""
     current = timeline.GetTrackCount("audio")

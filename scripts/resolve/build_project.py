@@ -118,9 +118,7 @@ def main():
         timeline_build.import_into_bin(media_pool, sound_folder, sound_abs_paths, import_cache)
     sound_item_by_relpath = {rel: import_cache[abs_p] for rel, abs_p in sound_abs_by_relpath.items()}
 
-    timeline = media_pool.CreateEmptyTimeline(f"{args.project_name} Timeline")
-    if timeline is None:
-        raise RuntimeError("CreateEmptyTimeline failed — a timeline with this name may already exist.")
+    timeline = timeline_build.ensure_empty_timeline(media_pool, project, f"{args.project_name} Timeline")
     project.SetCurrentTimeline(timeline)
     timeline_build.ensure_audio_tracks(timeline, 3)  # 1=narration, 2=SFX, 3=music bed
 

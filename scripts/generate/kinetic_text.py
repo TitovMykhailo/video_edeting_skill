@@ -158,7 +158,13 @@ def generate(args):
     bg = None if args.transparent else _hex_to_rgb(args.bg)
     fg = _hex_to_rgb(args.fg)
     accent = _hex_to_rgb(args.accent) if args.accent else None
-    accent_words = {w.upper() for w in args.accent_words.split(",")} if args.accent_words else set()
+    # Split on whitespace (not comma — "110,000" is a single word that happens to contain a
+    # comma, not two words) and strip the same edge punctuation render_frame() strips off each
+    # rendered word before comparing, so "--accent-words GARAGE." actually matches the rendered
+    # word "GARAGE." instead of silently never matching (the two sides used to strip
+    # differently: render_frame() stripped, this didn't — caught by generating a real hook
+    # clip and finding the accent word rendered in the default color).
+    accent_words = {w.strip(".,!?").upper() for w in args.accent_words.split()} if args.accent_words else set()
 
     font_path = resolve_font_path(args.font_path)
     total_frames = max(1, round(args.duration * fps))
@@ -209,7 +215,7 @@ def main():
     parser.add_argument("--bg", default="#0A0A0A", help="background hex color, ignored if --transparent")
     parser.add_argument("--fg", default="#FFFFFF", help="default text color, hex")
     parser.add_argument("--accent", help="accent color hex for --accent-words")
-    parser.add_argument("--accent-words", help="comma-separated words to render in --accent color")
+    parser.add_argument("--accent-words", help="space-separated words to render in --accent color, e.g. \"GARAGE. TRILLION\"")
     parser.add_argument("--font-path", help="path to a .ttf/.ttc font; auto-detects a system bold font if omitted")
     parser.add_argument("--font-size", type=int, default=140)
     parser.add_argument("--anim-fraction", type=float, default=0.35, help="fraction of duration spent animating in, rest is a hold")

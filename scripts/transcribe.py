@@ -29,8 +29,14 @@ def main():
     )
     parser.add_argument(
         "--device",
-        default="auto",
-        help="'cpu', 'cuda', or 'auto' (default: auto — faster-whisper picks the best available)",
+        default="cpu",
+        help=(
+            "'cpu', 'cuda', or 'auto' (default: cpu — reliable everywhere; 'auto'/'cuda' can "
+            "raise a low-level ctranslate2/cublas error instead of falling back cleanly when a "
+            "GPU is detected but its CUDA runtime isn't actually installed, which is common on "
+            "a machine that was never set up for ML workloads. Pass --device cuda yourself if "
+            "you know it works)"
+        ),
     )
     args = parser.parse_args()
 
@@ -47,7 +53,10 @@ def main():
     language = None if args.language == "auto" else args.language
 
     print(f"Loading faster-whisper model '{args.model}' (first run downloads it)...", file=sys.stderr)
-    model = WhisperModel(args.model, device=args.device, compute_type="auto" if args.device == "auto" else None)
+    # compute_type="auto" is valid (and required) regardless of device — ctranslate2 rejects
+    # compute_type=None outright, which is what every non-"auto" --device got here before this
+    # fix (only device="auto" produced a real value) — caught trying --device cpu for real.
+    model = WhisperModel(args.model, device=args.device, compute_type="auto")
 
     print(f"Transcribing {args.audio} ...", file=sys.stderr)
     segments, info = model.transcribe(args.audio, language=language, word_timestamps=True)
