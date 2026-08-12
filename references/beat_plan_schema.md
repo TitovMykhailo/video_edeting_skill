@@ -266,3 +266,29 @@ covered twice. `expected_runtime_s`, `unassigned_vo_duration_s`, `timeline_gaps`
 `unintentional_overlaps` should all come back empty/zero; `status` should read `PASS`. If it
 doesn't, fix the beat plan and rerun rather than shipping a plan you know has a hole in it — see
 `references/editor_discipline.md`'s "timeline integrity is non-negotiable" framing.
+
+### Free-edition OTIO path
+
+`edit_plan.json` and `beat_plan.json` are the only inputs `scripts/resolve/build_otio.py` needs
+(it doesn't read `captions.json` — captions get imported by hand post-import, see below). Run it
+in place of `build_project.py` when the user is on DaVinci Resolve Free, where the external
+scripting API `build_project.py` depends on is Studio-only (see
+`references/resolve_scripting_api.md`'s "Free edition" note):
+
+```bash
+python3 scripts/resolve/build_otio.py --project-name "<name>" --narration-audio narration.wav \
+  --edit-plan out/edit_plan.json --beat-plan out/beat_plan.json \
+  --style style.json --aspect 16:9 --media-library <path-to-library> --sound-library <path-to-library> \
+  --out out/timeline.otio
+```
+
+It maps this schema onto an OpenTimelineIO timeline the same way `build_project.py` maps it onto
+a Resolve timeline — `keep_segments` → a Narration audio track, `beats[].media` → one or more
+B-Roll video tracks (split into extra tracks only if beats actually overlap), `beats[].sfx[]` →
+one or more SFX audio tracks (same overlap-splitting), `music_bed` → a Music Bed track with the
+same duck/base two-span model `audio_design.py` uses. What it can't carry through the OTIO
+round-trip — `sfx[].gain_db`, `music_bed.duck_gain_db`/`base_gain_db`, the style profile's
+`color.grade_cdl`, and captions — gets written instead to a plain-text
+`<out>.otio.manual_steps.md` next to the `.otio` file, so nothing gets silently dropped; it just
+needs a few minutes by hand in Resolve after import (File → Import Timeline → OpenTimelineIO)
+instead of happening automatically.

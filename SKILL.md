@@ -267,6 +267,14 @@ higher bar.
 
 ### 6. Build it in Resolve and render
 
+**Check which Resolve edition first — the two paths are not interchangeable.** DaVinci Resolve
+Free cannot run `build_project.py` at all (Blackmagic made external scripting Studio-only in
+19.1, Nov 2024 — see `references/resolve_scripting_api.md`'s "Free edition" note for how this was
+confirmed). If you don't already know which edition the user has, ask, or run
+`scripts/check_environment.py` and read what it reports.
+
+**Studio:**
+
 ```bash
 python3 scripts/resolve/build_project.py --project-name "<name>" --narration-audio narration.wav \
   --edit-plan out/edit_plan.json --beat-plan out/beat_plan.json --captions out/captions.srt \
@@ -289,6 +297,23 @@ way there, not a push-button final master. Tell the user that explicitly once it
 If anything in this step errors, don't guess — read the Resolve error text (the API returns
 useful messages) and check `references/resolve_scripting_api.md`'s troubleshooting notes before
 retrying blindly.
+
+**Free:**
+
+```bash
+python3 scripts/resolve/build_otio.py --project-name "<name>" --narration-audio narration.wav \
+  --edit-plan out/edit_plan.json --beat-plan out/beat_plan.json \
+  --style style.json --aspect 16:9 --media-library <path-to-library> --sound-library <path-to-library> \
+  --out out/timeline.otio
+```
+
+This never connects to Resolve at all — it writes `out/timeline.otio` (clip placement/trims for
+narration, B-Roll, SFX, and the music bed) plus `out/timeline.otio.manual_steps.md` (everything
+that doesn't survive the OTIO round-trip: clip gain levels, the CDL color grade, and a captions-
+import reminder). Tell the user to open Resolve, File → Import Timeline → OpenTimelineIO, pick the
+`.otio` file, then work through the manual-steps file. No render happens automatically on this
+path either — rendering itself isn't scripting-gated, so once the timeline looks right, the user
+renders normally from the Deliver page.
 
 ## Style profiles
 

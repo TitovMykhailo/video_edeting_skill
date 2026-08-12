@@ -8,9 +8,17 @@ matplotlib>=3.7.0
 # tier is actually used; kinetic_text.py and chart.py cover the common cases without it.
 #   pip3 install playwright && playwright install chromium
 
+# Optional, only needed for scripts/resolve/build_otio.py — the free-Resolve-edition path that
+# writes a .otio file instead of talking to Resolve's (Studio-only, see
+# references/resolve_scripting_api.md) external scripting API. Skip this if you have Resolve
+# Studio and use build_project.py instead.
+#   pip3 install opentimelineio
+
 # NOT pip-installable: the DaVinci Resolve scripting module (DaVinciResolveScript.py) ships
 # inside the Resolve app install. scripts/resolve/connect.py locates it via the
 # RESOLVE_SCRIPT_API / RESOLVE_SCRIPT_LIB env vars (with sane per-OS default paths as a
-# fallback) — see references/resolve_scripting_api.md for setup.
+# fallback) — see references/resolve_scripting_api.md for setup. Only reachable at all on
+# DaVinci Resolve Studio; the free edition blocks external scripting entirely (use
+# scripts/resolve/build_otio.py instead).
 #
 # Also required on PATH, installed separately (not via pip): ffmpeg, ffprobe.

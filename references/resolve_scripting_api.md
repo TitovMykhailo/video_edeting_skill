@@ -36,10 +36,29 @@ authoritative source, not this doc. Read it before guessing at an unfamiliar cal
 
 3. Resolve must be **running** (any project open or the project manager screen) before any script
    connects — `scripts/resolve/connect.py` fails fast with a clear message if it isn't.
-4. Free vs Studio: the scripting API itself works the same in both. What differs is the Neural
-   Engine (Studio-only) — built-in Speech-to-Text, Scene Cut Detection quality, Smart Reframe.
-   This skill doesn't depend on any of those; transcription is done externally via
-   `faster-whisper` specifically so the pipeline works on Free.
+4. **Free edition cannot use `build_project.py` at all — this isn't a settings problem, don't
+   spend time chasing one.** As of Resolve 19.1 (Nov 2024), Blackmagic made the *external*
+   scripting interface (an outside process calling `scriptapp("Resolve")`, which is what every
+   `resolve/*.py` module here does) Studio-only. Confirmed empirically against a real Resolve 21
+   Free install for this skill: env vars correct, DLL loads without error, a project open, same
+   Windows session, the scripting TCP port reachable — `scriptapp("Resolve")` still returns
+   `None`, always. No preference toggle re-enables it; the old "External scripting using: Local"
+   dropdown some guides mention has been removed from Free's Preferences UI entirely (it's not
+   hidden, not renamed to something else — it isn't there). The *internal* Console (Workspace
+   menu → Console, F6, language dropdown → Py3) still works fine on Free, because that runs
+   inside Resolve's own process rather than connecting from outside — it's just useless for this
+   skill's scripts, which by design run as an external Python process.
+
+   **If you're on Free: use `scripts/resolve/build_otio.py` instead of `build_project.py`.** It
+   writes a `.otio` (OpenTimelineIO) file from the same `edit_plan.json`/`beat_plan.json`, which
+   Resolve imports as a normal file via File → Import Timeline → OpenTimelineIO — not gated by
+   the scripting restriction because it isn't scripting. It also writes a
+   `<output>.manual_steps.md` next to the `.otio` file listing everything that doesn't survive
+   the OTIO round-trip (clip gain levels, the CDL color grade, captions import) so you can finish
+   those by hand in a few minutes. See references/beat_plan_schema.md's "Free-edition OTIO path"
+   section.
+
+   If you're on Studio, none of this applies — `build_project.py` works as documented below.
 
 ## Connecting (the boilerplate every `resolve/*.py` module shares)
 
