@@ -49,7 +49,7 @@ Usage:
     python3 assemble_video.py --beat-plan out/beat_plan.json \
         --narration-audio out/_narration_declicked.wav --width 1080 --height 1920 \
         --out out/assembled.mp4 [--captions out/captions.srt] [--style out/style.merged.json] \
-        [--sound-library <path>] [--media-library <path>]
+        [--sound-library <path>] [--media-library <path>] [--fps 30]
 """
 import argparse
 import json
@@ -80,25 +80,103 @@ def probe_duration_s(path):
     return round(float(out.stdout.strip()), 3)
 
 
-def trim_segment(path, src_in, src_out, out_path):
-    """Trim [src_in, src_out) from path into out_path. Stream-copy first (fast, frame-exact only
-    at keyframes); falls back to a re-encode if the copy doesn't land on the requested duration
-    (common for GOP-based codecs cut mid-GOP) or fails outright."""
+def probe_video_codec(path):
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
+         "-of", "csv=p=0", path],
+        capture_output=True, text=True, timeout=30,
+    )
+    return out.stdout.strip()
+
+
+def probe_fps(path):
+    """Real average fps as a float — reads avg_frame_rate (a "num/den" string, e.g. "30000/1001")
+    rather than r_frame_rate, since r_frame_rate can report a container-level guess that doesn't
+    match the stream's actual average timing for anything already variable-frame-rate."""
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate",
+         "-of", "csv=p=0", path],
+        capture_output=True, text=True, timeout=30,
+    )
+    raw = out.stdout.strip()
+    if "/" in raw:
+        num, den = raw.split("/")
+        den = float(den)
+        return float(num) / den if den else 0.0
+    return float(raw) if raw else 0.0
+
+
+def trim_segment(path, src_in, src_out, out_path, target_fps, scale_to=None):
+    """Trim [src_in, src_out) from path into out_path, always producing a ProRes 422 output at a
+    constant target_fps. Stream-copies only when the SOURCE is already ProRes AND already at
+    target_fps (fast, frame-exact only at keyframes — but every frame is a keyframe in ProRes, so
+    this is effectively exact); re-encodes otherwise, even when no scaling is needed and
+    dimensions already match the target.
+
+    Why every segment must end up the same codec AND the same constant frame rate, not just
+    "close enough" on either — both reproduced live on the same real project, back to back:
+
+    1. Codec: assemble_video.py's final concat step (`-f concat -c copy`) requires codec-uniform
+       inputs to report a correct duration. This skill's own generated clips
+       (beat_plan_from_words.py's kinetic_text/chart/reframed output) are always ProRes, so a
+       project built entirely from those was always codec-uniform and this never surfaced. The
+       first real project pulling in un-reframed real library clips directly (their source aspect
+       already matched the target, so aspect_mismatched() correctly left them alone — see the
+       scale_to note below) hit it immediately: those clips kept their ORIGINAL codec (e.g. h264)
+       through the old stream-copy-first path, mixed with ProRes segments elsewhere in the concat
+       list. The concat succeeded (exit 0, no error) but silently reported the wrong total
+       duration — 245s instead of the correct ~212s.
+    2. Frame rate: fixing #1 alone (forcing ProRes, but at each source's own native fps) produced
+       a *correct-duration* file that still played back with burned-in captions drifting out of
+       sync with the narration audio — confirmed by extracting a real frame at t=100s and finding
+       the caption for t=125.7s displayed there, a 25+ second drift that grows over the video.
+       Root cause: a handful of real library clips (unlike this skill's own always-30fps generated
+       output) have their own native frame rate; concatenating segments at inconsistent frame
+       rates makes the concatenated file's internal video timeline not correspond to true elapsed
+       time, even though its total duration comes out numerically right by coincidence of total
+       frame count vs. declared rate. subtitles= burns in against that (silently wrong) internal
+       timeline, not against the separately-mixed (correctly-timed) audio track, so the drift is
+       invisible in every check except actually reading a rendered frame's captions against the
+       script — exactly why this skill insists on reading real frames instead of trusting a
+       success exit code (see editor_discipline.md).
+
+    Both problems have the same shape and the same fix: never assume a source clip already
+    matches the pipeline's own conventions (codec, fps, resolution) just because this skill's own
+    generated output always does — check and normalize explicitly, every time, for any clip that
+    didn't come from beat_plan_from_words.py's own reframing/generation.
+
+    scale_to=(width, height), when given, additionally scales while re-encoding — for a beat whose
+    source is already the right ASPECT but not the right absolute resolution (e.g. a 480x270 clip
+    in a 1920x1080 project: same 16:9, just lower-res). beat_plan_from_words.py's
+    aspect_mismatched() only catches a genuine aspect mismatch (the case that needs the blur-fill
+    treatment in render_fitted_source()) — same-aspect/wrong-resolution is a different, simpler
+    case this script has to handle itself since nothing upstream reframes it. A plain scale is
+    correct here specifically because the aspect already matches: nothing gets cropped or padded,
+    unlike a real aspect mismatch."""
     duration = round(src_out - src_in, 3)
 
-    def run(codec_args):
-        cmd = ["ffmpeg", "-y", "-ss", str(src_in), "-i", path, "-t", str(duration), *codec_args, out_path]
+    def run(codec_args, vf=None):
+        cmd = ["ffmpeg", "-y", "-ss", str(src_in), "-i", path, "-t", str(duration)]
+        if vf:
+            cmd += ["-vf", vf]
+        cmd += [*codec_args, out_path]
         return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
-    result = run(["-c", "copy"])
-    ok = result.returncode == 0 and os.path.exists(out_path)
-    if ok:
-        actual = probe_duration_s(out_path)
-        ok = abs(actual - duration) < (1.0 / 30)  # within one frame at a conservative 30fps
-    if not ok:
-        result = run(["-c:v", "prores_ks", "-profile:v", "2", "-pix_fmt", "yuv422p10le"])
-        if result.returncode != 0:
-            raise RuntimeError(f"Trimming {path} [{src_in}:{src_out}] failed:\n{result.stderr[-2000:]}")
+    prores_args = ["-c:v", "prores_ks", "-profile:v", "2", "-pix_fmt", "yuv422p10le", "-r", str(target_fps)]
+    scale_vf = f"scale={scale_to[0]}:{scale_to[1]}:flags=lanczos" if scale_to else None
+
+    if not scale_to and probe_video_codec(path) == "prores" and abs(probe_fps(path) - target_fps) < 0.01:
+        result = run(["-c", "copy"])
+        ok = result.returncode == 0 and os.path.exists(out_path)
+        if ok:
+            actual = probe_duration_s(out_path)
+            ok = abs(actual - duration) < (1.0 / target_fps)
+        if ok:
+            return
+
+    result = run(prores_args, vf=scale_vf)
+    if result.returncode != 0:
+        raise RuntimeError(f"Trimming {path} [{src_in}:{src_out}] failed:\n{result.stderr[-2000:]}")
 
 
 def collect_sfx_cues(beat_plan, sound_library):
@@ -225,6 +303,7 @@ def main():
     parser.add_argument("--media-library", help="root that a beat's media.path resolves against when it's not already absolute — beat_plan_from_words.py only rewrites a beat's path to absolute when it actually needed reframing (see aspect_mismatched()); a beat whose source aspect already matched the target keeps its original library-relative path, so this is required whenever beat_plan.json has any such beat (landscape source clips in a 16:9 project, the common case — confirmed missing produces a hard, immediate ffprobe FileNotFoundError rather than a silent wrong guess)")
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
+    parser.add_argument("--fps", type=float, default=30.0, help="every segment gets normalized to this constant frame rate before concatenation — must match the fps beat_plan_from_words.py's own generated beats were built at (its own --fps, default 30) or burned-in captions will drift out of sync against real library clips at a different native fps; see trim_segment()'s docstring")
     parser.add_argument("--out", required=True)
     parser.add_argument("--captions", help="burn in captions.srt (plain libass style, not the animated word-pop look — see this module's docstring)")
     parser.add_argument("--style", help="style profile — only used to print a manual color-grade reminder, not applied")
@@ -261,17 +340,38 @@ def main():
                     )
                 path = os.path.join(args.media_library, path)
             dims = probe_dimensions(path)
+            scale_to = None
             if dims != (args.width, args.height):
-                raise RuntimeError(
-                    f"Beat {i} ('{path}') is {dims[0]}x{dims[1]}, not {args.width}x{args.height}. "
-                    "Every beat must already be reframed to the target size before assembly — "
-                    "rebuild beat_plan.json with beat_plan_from_words.py's --width/--height "
-                    "rather than reframing here."
-                )
+                src_ar = dims[0] / dims[1]
+                target_ar = args.width / args.height
+                # 0.1, not a tighter number: must match beat_plan_from_words.py's own
+                # aspect_mismatched() tolerance exactly. That function already made the call that
+                # anything within 10% doesn't need blur-fill reframing — using a stricter
+                # tolerance here would second-guess a decision already made upstream and hard-fail
+                # on beats that were deliberately, correctly left unreframed (reproduced live: a
+                # 498x264 clip, 6.1% off 16:9, hard-failed under an 0.02 tolerance here despite
+                # aspect_mismatched() already having accepted it).
+                if abs(src_ar - target_ar) / target_ar <= 0.1:
+                    # Same aspect (within rounding — e.g. 480x270 vs 1920x1080, both exactly
+                    # 16:9), just the wrong absolute resolution. Not what beat_plan_from_words.py's
+                    # aspect_mismatched() (tolerance 0.1) is checking, and not something that needs
+                    # blur-fill/cropping — a plain scale is correct. A real aspect mismatch (beyond
+                    # this much tighter 0.02 tolerance) still hard-fails below, unchanged: that
+                    # indicates a beat that should have gone through render_fitted_source() and
+                    # didn't, not something to silently paper over here.
+                    scale_to = (args.width, args.height)
+                    print(f"Beat {i}: {dims[0]}x{dims[1]} matches target aspect but not resolution — scaling to {args.width}x{args.height}", file=sys.stderr)
+                else:
+                    raise RuntimeError(
+                        f"Beat {i} ('{path}') is {dims[0]}x{dims[1]}, not {args.width}x{args.height}. "
+                        "Every beat must already be reframed to the target size before assembly — "
+                        "rebuild beat_plan.json with beat_plan_from_words.py's --width/--height "
+                        "rather than reframing here."
+                    )
             src_in = media.get("src_in", 0.0)
             src_out = media.get("src_out", probe_duration_s(path))
             seg_path = os.path.join(tmp_dir, f"seg_{i:03d}.mov")
-            trim_segment(path, src_in, src_out, seg_path)
+            trim_segment(path, src_in, src_out, seg_path, args.fps, scale_to=scale_to)
             concat_lines.append(f"file '{seg_path}'")
             print(f"Beat {i}: trimmed {path} [{src_in}:{src_out}] -> {os.path.basename(seg_path)}", file=sys.stderr)
 
