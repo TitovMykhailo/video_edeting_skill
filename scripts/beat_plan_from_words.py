@@ -490,6 +490,15 @@ def main():
         json.dump(beat_plan, f, ensure_ascii=False, indent=2)
 
     print(f"Wrote {len(beats)} beats covering 0.0-{prev_end_time}s to {args.out}", file=sys.stderr)
+    print(
+        "\nBefore treating this plan as final: run validate_timeline.py --spec against the beat "
+        "spec (bare text cards / clip-reuse density / ip_risk - mechanical, catches a subset "
+        "cheaply, see editor_discipline.md Part 24's docstring note), then a real critique pass "
+        "against the rendered beats, named per editor_discipline.md Part 24: humor critic, text "
+        "critic, beauty critic, video critic (general). A written beat_spec.json is a draft, not "
+        "a finished plan.",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":

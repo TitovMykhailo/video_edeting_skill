@@ -325,6 +325,13 @@ def cmd_write_tags(args):
             "quality_ok": tag_data.get("quality_ok", True),
             "quality_notes": tag_data.get("quality_notes", ""),
             "source": tag_data.get("source", "own_library"),
+            # "studio_ip" | "recognizable_individual" | None — flags real Content-ID/legal exposure
+            # distinct from quality_ok (which is about whether a clip looks good, not whether it's
+            # safe to use). Surfaced automatically in query()'s reasons below so the risk is visible
+            # at the moment a clip is picked, not something to remember separately. See
+            # references/editor_discipline.md's copyright-risk policy Part and
+            # references/media_tagging_schema.md.
+            "ip_risk": tag_data.get("ip_risk"),
             # which sound pack/library this asset came from (e.g. "happy-editing-transitions") —
             # lets query --pack keep a whole project inside one consistent sonic palette instead
             # of free-mixing across every tagged asset; see references/sound_mixing_techniques.md
@@ -391,6 +398,14 @@ def cmd_query(args):
             score -= 2.0
             reasons.append("recently used (deprioritized)")
 
+        # Score is untouched — ip_risk is a visibility flag for a human/agent to weigh, not a
+        # penalty query should apply on its own (a Tier C clip might still be the right, deliberate
+        # choice — see references/editor_discipline.md's copyright-risk policy). Hiding or
+        # de-scoring it here would make that a silent decision instead of a visible one.
+        ip_risk = entry.get("ip_risk")
+        if ip_risk:
+            reasons.append(f"WARNING: tagged ip_risk={ip_risk} - see editor_discipline.md's copyright-risk policy before using")
+
         if matched:
             results.append(
                 {
@@ -406,6 +421,7 @@ def cmd_query(args):
                     "energy": entry.get("energy"),
                     "loopable": entry.get("loopable"),
                     "tempo_bpm": entry.get("tempo_bpm"),
+                    "ip_risk": ip_risk,
                 }
             )
 
@@ -434,7 +450,7 @@ def main():
 
     p_write = sub.add_parser("write-tags", help="commit tags into the persistent index")
     p_write.add_argument("--library", required=True)
-    p_write.add_argument("--tags", required=True, help="JSON file: {relative_path: {tags, description, mood, quality_ok, quality_notes, source, pack, energy, loopable, tempo_bpm}} — pack is which sound pack/library the asset came from (audio-relevant but not audio-only); energy/loopable/tempo_bpm are audio-only, see references/media_tagging_schema.md")
+    p_write.add_argument("--tags", required=True, help="JSON file: {relative_path: {tags, description, mood, quality_ok, quality_notes, source, ip_risk, pack, energy, loopable, tempo_bpm}} — pack is which sound pack/library the asset came from (audio-relevant but not audio-only); energy/loopable/tempo_bpm are audio-only; ip_risk is \"studio_ip\"|\"recognizable_individual\"|omit, see references/media_tagging_schema.md")
     p_write.set_defaults(func=cmd_write_tags)
 
     p_query = sub.add_parser("query", help="search the tagged index")

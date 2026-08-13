@@ -299,7 +299,10 @@ a single vague "does this look good":
   Score hero shots on frame beauty, composition, depth, light, color, clarity, originality — but
   don't chase 100 on every score; contrast across shots matters more than a uniformly high average
   (see Part 7).
-- **Video critic (general)** — the full checklist above, applied to the whole piece.
+- **Video critic (general)** — the full checklist above, applied to the whole piece. Also ask
+  directly: did this video use zero compositing (Part 33 — chroma-key, screen/add blend, alpha
+  overlay)? If so, is that a deliberate choice for this particular piece, or just the default
+  nobody made — Part 33's own real-project finding is that the answer is usually the latter.
 
 **Run at least the video critic as a genuinely independent pass, not just self-review.** Claude
 critiquing its own beat plan from memory tends to defend its own choices — a fresh Agent dispatch
@@ -425,6 +428,61 @@ sequence, a beat whose only available footage is green-screen, a payoff beat tha
 extra energy. A video built entirely from single flat clips, when compositing tools exist and cost
 nothing extra to use, is worth naming as a real gap in a critique pass (Part 24) — not a neutral
 stylistic choice.
+
+## 34. Media selection: use the ranked list, don't grab #1
+
+`index_media.py query` already returns scored, ranked candidates with `reasons` for each — the
+infrastructure for a real choice already exists. The failure mode this Part exists to prevent is
+real and already happened on this skill's own first production video (confirmed by a dispatched
+critique agent, not guessed): every beat's media pick was the single most on-the-nose literal
+keyword match, chosen without a visible comparison against alternatives — "textbook automated
+b-roll matcher working phrase-by-phrase," in the critique's own words, not an editor making a
+shot-by-shot call. Concrete rules to actually prevent a repeat:
+
+- When `query` returns more than one usable candidate (`quality_ok`, no `ip_risk` blocking issue —
+  see Part 35), the beat's `reasoning` field in `beat_spec.json` must say *why this one over the
+  others in the top-3*, not just why it fits the word/phrase. "Only one usable candidate" is a
+  legitimate reason to write down — the point is making the comparison visible, not banning the
+  obvious pick when it really is the only one.
+- Watch shot *register*, not just content match: three or more consecutive beats landing at the
+  same energy/composition weight (see Part 7, Part 13's hero-moment density) is a finding worth
+  flagging even when every individual clip is a good literal match — the same failure the critique
+  called "no escalation to match the script's build."
+- A clip whose whole appeal is a literal keyword pun ("eyes" → an eyes-looking clip) is fine
+  occasionally but is exactly the "one stock clip per script phrase" pattern that reads as
+  automated when it's *every* beat's strategy — mix literal matches with mood/tone matches (Part
+  on `intent: emotional_beat`) and filler variety on purpose, not as an afterthought.
+
+## 35. Copyright/IP risk: a visible decision, not a silent default
+
+A real finding from this skill's own first production video: several beats used identifiable
+studio IP as reaction b-roll (a named character from a current streaming show, a classic cartoon,
+a AAA game's cutscene) — real Content ID / claim / demonetization exposure, surfaced by a
+dispatched critique agent and, as of this writing, left as an open decision for the user rather
+than resolved either way. This Part exists so the *next* project doesn't repeat the same silent
+default of "whatever matched the keyword, unchecked."
+
+Three tiers, by actual risk (tag with `media_tagging_schema.md`'s `ip_risk` field):
+
+- **Tier A — safe.** The user's own footage, anything from `scripts/generate/`, licensed/
+  public-domain stock (Pexels/Pixabay per `media_tagging_schema.md`'s stock table), generic
+  non-identifiable reaction footage.
+- **Tier B — caution, low residual risk.** A recognizable real individual used as a reaction
+  meme (`ip_risk: recognizable_individual`) — an established, widely-tolerated meme-culture norm,
+  nonzero but low practical risk.
+- **Tier C — real exposure.** Recognizable studio/network/publisher IP, identifiable at a glance
+  (`ip_risk: studio_ip`) — the confirmed real case on this skill's own first project.
+
+**The concrete rule, not just the principle:** at most one Tier C clip per video, never as the hook
+or first frame (the highest-visibility, most-scrutinized beat, and the one place a viewer's first
+impression is most likely to be "oh, this is just clips"), and never reused across many videos in a
+way that reads as a pattern rather than one deliberate choice. `index_media.py query` already
+surfaces `ip_risk` as a `WARNING:` reason on every matching result — the rule above is easy to
+follow *because* the flag is unavoidable at pick time, not something to remember separately.
+
+**Whether to purge existing Tier C usage or accept the risk stays the user's call, explicitly** —
+this Part's job is making that call visible and repeatable at every future pick, not making it once
+and hard-coding the answer.
 
 ## The full quality loop
 

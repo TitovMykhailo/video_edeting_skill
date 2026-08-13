@@ -30,13 +30,15 @@ draft; swap in a real captioning pass (Tier 2 in code_generated_frames.md, or Re
 Fusion titles) for the final look.
 
 Audio: every beat's optional sfx[] cues (beat_plan_schema.md's existing schema — at/path/gain_db)
-are mixed in at their exact absolute time, then the whole mix (narration + SFX) is two-pass
-loudness-normalized to -14 LUFS integrated — YouTube's own normalization target (see
-references/sound_mixing_techniques.md), so the platform doesn't turn a hotter mix down
-unpredictably later. No sound library yet? scripts/generate/synth_sfx.py generates simple
-whoosh/impact/riser/click cues with ffmpeg's own audio synthesis — a real sourced SFX pack will
-always sound better and stay genre-consistent (see sound_mixing_techniques.md's pack discipline),
-this is a fallback for when one doesn't exist yet, not a replacement.
+are mixed in at their exact absolute time, plus a top-level music_bed if beat_plan.json has one
+(looped and ducked under narration for the whole video — see build_music_cues()'s docstring for
+why this path doesn't need the Resolve/OTIO path's narration-free "tail" span), then the whole mix
+(narration + SFX + music) is two-pass loudness-normalized to -14 LUFS integrated — YouTube's own
+normalization target (see references/sound_mixing_techniques.md), so the platform doesn't turn a
+hotter mix down unpredictably later. No sound library yet? scripts/generate/synth_sfx.py generates
+simple whoosh/impact/riser/click cues with ffmpeg's own audio synthesis — a real sourced SFX pack
+will always sound better and stay genre-consistent (see sound_mixing_techniques.md's pack
+discipline), this is a fallback for when one doesn't exist yet, not a replacement.
 
 Usage:
     python3 assemble_video.py --beat-plan out/beat_plan.json \
@@ -46,6 +48,7 @@ Usage:
 """
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -104,6 +107,39 @@ def collect_sfx_cues(beat_plan, sound_library):
             abs_path = path if os.path.isabs(path) else os.path.join(sound_library, path)
             cues.append((beat["start"] + sfx.get("at", 0.0), abs_path, sfx.get("gain_db", 0.0)))
     return cues
+
+
+def build_music_cues(beat_plan, sound_library, total_duration_s):
+    """beat_plan's optional top-level music_bed -> [(absolute_time_s, abs_path, gain_db), ...],
+    the exact same shape collect_sfx_cues() returns — deliberately, so a caller can just
+    concatenate this onto that list and hand the combined list to mix_and_normalize_audio() as
+    one mix, one two-pass loudness measurement, instead of a separate music mixing step (measuring
+    loudness on the narration+SFX mix alone and then blending in music afterward would make the
+    -14 LUFS target apply to the wrong signal).
+
+    Mirrors scripts/resolve/build_otio.py's build_music_track() (loop a shorter clip to cover the
+    span, ducked under narration) but deliberately does NOT implement that function's
+    narration-free "tail" span at a louder base_gain_db: build_otio.py needs that because a
+    Resolve timeline can be hand-extended past where the narration ends, but this script's
+    beat_plan.json has no such concept — every beat's timing is derived directly from
+    words_new_timeline (see beat_plan_from_words.py), so the video's total duration IS the
+    narration's duration by construction. There is no tail case to cover here.
+
+    Deliberately ducked for the WHOLE video rather than requiring a separate narration-end value
+    this script doesn't have any other source for."""
+    music_bed = beat_plan.get("music_bed")
+    if not music_bed:
+        return []
+    path = music_bed["path"]
+    abs_path = path if os.path.isabs(path) else os.path.join(sound_library, path)
+    gain_db = music_bed.get("duck_gain_db", music_bed.get("gain_db", -18.0))
+    if not music_bed.get("loop", True):
+        return [(0.0, abs_path, gain_db)]
+    clip_len_s = probe_duration_s(abs_path)
+    if not clip_len_s or clip_len_s <= 0:
+        raise RuntimeError(f"Could not probe a usable duration for music bed {abs_path}")
+    repeats = math.ceil(total_duration_s / clip_len_s)
+    return [(round(i * clip_len_s, 3), abs_path, gain_db) for i in range(repeats)]
 
 
 def mix_and_normalize_audio(narration_path, sfx_cues, out_path):
@@ -246,11 +282,16 @@ def main():
             vf_args = ["-vf", f"subtitles='{srt_escaped}'"]
 
         sfx_cues = collect_sfx_cues(beat_plan, args.sound_library or "") if any(b.get("sfx") for b in beat_plan["beats"]) else []
-        if sfx_cues and not args.sound_library:
-            raise RuntimeError(f"beat_plan.json has {len(sfx_cues)} sfx cue(s) but --sound-library wasn't given to resolve their paths.")
+        total_duration_s = beat_plan["beats"][-1]["end"]
+        music_cues = build_music_cues(beat_plan, args.sound_library or "", total_duration_s) if beat_plan.get("music_bed") else []
+        if (sfx_cues or music_cues) and not args.sound_library:
+            raise RuntimeError(
+                f"beat_plan.json has {len(sfx_cues)} sfx cue(s) and {'a music_bed' if music_cues else 'no music_bed'} "
+                "but --sound-library wasn't given to resolve their paths."
+            )
         final_audio_path = os.path.join(tmp_dir, "final_audio.wav")
-        print(f"Mixing narration with {len(sfx_cues)} SFX cue(s) and normalizing to -14 LUFS...", file=sys.stderr)
-        mix_and_normalize_audio(args.narration_audio, sfx_cues, final_audio_path)
+        print(f"Mixing narration with {len(sfx_cues)} SFX cue(s) and {len(music_cues)} music cue(s), normalizing to -14 LUFS...", file=sys.stderr)
+        mix_and_normalize_audio(args.narration_audio, sfx_cues + music_cues, final_audio_path)
 
         out_dir = os.path.dirname(os.path.abspath(args.out)) or "."
         os.makedirs(out_dir, exist_ok=True)

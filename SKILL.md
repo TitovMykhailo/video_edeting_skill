@@ -327,14 +327,24 @@ of recording (see below); the script requires `edit_plan.json`'s real `words_new
 can't run without it. Add `sfx`/`music_bed` to the spec's beats and top-level flag respectively —
 see `references/beat_plan_schema.md` for the full field set.
 
-**Before running the spec through the script, count the `"generate"` text-card beats.** More than
-one bare text-on-flat-background beat in the same spec (the hook and the CTA both reaching for it
-is the common way this happens) is a real content problem, not a stylistic pattern — see
+**Before running the spec through the script, run the mechanical spec checks instead of eyeballing
+it:**
+```bash
+python3 scripts/validate_timeline.py --spec out/beat_spec.json --edit-plan out/edit_plan.json \
+  --media-library <path> [--style out/style.merged.json] --out out/spec_validation.json
+```
+This catches, mechanically, three things that used to rely on remembering to check by hand: more
+than one bare text-on-flat-background beat (the hook and the CTA both reaching for it is the common
+way this happens — a real content problem, not a stylistic pattern, see
 `references/cinematic_principles.md`'s anti-patterns list and `references/editor_discipline.md`
-Part 24's text critic. A hook especially deserves a real visual: a strong sourced clip (captions
-already carry the spoken line, so the text isn't lost) or the transparent-overlay technique in
-`references/code_generated_frames.md` to pair generated text with real motion instead of flat
-color. Catch this against the spec, not after a render.
+Part 24's text critic), the same clip reused too close together (Part 34), and any beat whose media
+is tagged `ip_risk` in `_media_index.json` (Part 35 — caps this at one per video, never the hook).
+None of these flip the exit code — they print as `spec_warnings`, judgment calls for a human/agent
+to weigh, not objective breakage. A hook especially deserves a real visual: a strong sourced clip
+(captions already carry the spoken line, so the text isn't lost) or the transparent-overlay
+technique in `references/code_generated_frames.md` to pair generated text with real motion instead
+of flat color. Catch all of this against the spec, not after a render — that's the whole point of
+running it here instead of only after `beat_plan_from_words.py` writes the full plan.
 
 **Before this beat plan is "done," two more things are non-negotiable — see
 `references/editor_discipline.md` for the full reasoning behind both:**

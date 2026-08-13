@@ -31,6 +31,8 @@ same scan/write-tags/query workflow; `scripts/index_media.py` keeps one file at 
       "quality_notes": "",
       "source": "own_library",                         // "own_library" | "stock:pexels" | "stock:pixabay" | "stock:giphy"
                                                             // | "generated:kinetic_text" | "generated:chart" | "generated:html_motion"
+      "ip_risk": null,                                     // null | "studio_ip" | "recognizable_individual" — see
+                                                            // "Copyright/IP risk tagging" below and editor_discipline.md's policy Part
       "pack": null,                                        // which sound pack/library this came from (e.g. "happy-editing-transitions"),
                                                             // mainly meaningful for audio — see references/sound_mixing_techniques.md
       "energy": null,                                     // audio-only, see below
@@ -65,6 +67,27 @@ look at the frames and write:
   excludes it by default.
 - Don't over-invest per clip — a few seconds of looking and a one-line judgment is the target. The
   index gets better over time as the library grows; it doesn't need to be perfect on pass one.
+
+## Copyright/IP risk tagging
+
+Set `ip_risk` on a clip when a viewer would recognize it at a glance as coming from something
+specific and owned:
+
+- `"studio_ip"` — a shot from a specific movie/show/game is identifiable as such (a distinctive
+  character, a recognizable set/HUD, a well-known scene) — real Content ID / claim / demonetization
+  exposure. A meme library built by scraping reaction clips accumulates these constantly; tag them
+  as you find them rather than only when something goes wrong.
+- `"recognizable_individual"` — a real, identifiable person (not a fictional character), even if
+  the clip itself isn't from copyrighted media — different risk profile (personality rights, not
+  Content ID) but still worth flagging the same way.
+- Leave `null`/omit for your own footage, code-generated clips, licensed stock, and generic
+  non-identifiable reaction content — the common, low-risk case.
+
+This is a visibility flag, not a ban — `query`'s scoring never penalizes an `ip_risk` clip, it just
+appends a `WARNING: tagged ip_risk=...` reason so the flag is impossible to miss at the exact
+moment the clip is being considered. What to actually do about a flagged clip is a project-level
+creative/legal call — see `editor_discipline.md`'s copyright-risk policy Part for the concrete
+tiers-and-limits framework, not a rule enforced here.
 
 ## Tagging guidance for audio assets (SFX/music)
 
@@ -121,7 +144,8 @@ structure the user already organized (`sfx/`, `music/`, `sfx/transitions/`). The
       "mood": "...",
       "energy": null,
       "loopable": null,
-      "tempo_bpm": null
+      "tempo_bpm": null,
+      "ip_risk": null              // present whenever tagged — also surfaced as a "WARNING: ..." reason string
     }
   ]
 }
