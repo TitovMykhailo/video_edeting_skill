@@ -203,6 +203,19 @@ def main():
             "durability note."
         )
 
+    # A direct frame export (bypassing render entirely) came back pure black at three different
+    # points on the timeline, identically — so the problem is in compositing itself, not the
+    # render/deliver pipeline. Never checked how many VIDEO tracks actually exist: if there's a
+    # second one (V2+) — from a project-level "default new-timeline track count" setting, not
+    # anything this script creates — with opaque content on it, V1 would be fully obscured
+    # regardless of being correct, which would explain every symptom so far.
+    video_track_count = timeline.GetTrackCount("video")
+    print(f"Video track count: {video_track_count}", file=sys.stderr)
+    for t_idx in range(1, video_track_count + 1):
+        t_items = timeline.GetItemListInTrack("video", t_idx)
+        t_enabled = timeline.GetIsTrackEnabled("video", t_idx)
+        print(f"  video track {t_idx}: enabled={t_enabled}, items={len(t_items) if t_items else 0}", file=sys.stderr)
+
     color_config = style.get("color")
     if args.skip_color_grade:
         print("Skipping color grade (--skip-color-grade).", file=sys.stderr)
