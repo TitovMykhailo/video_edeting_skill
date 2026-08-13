@@ -6,7 +6,7 @@ should typically run.
 
 Usage:
     python3 chart.py --type bar --data '{"Reading":10,"Doing":25,"Teaching":90}' \
-        --out out/generated/retention_chart.mp4 --duration 3.0 --title "Retention by method" \
+        --out out/generated/retention_chart.mov --duration 3.0 --title "Retention by method" \
         --bg "#0A0A0A" --fg "#FFFFFF" --accent "#E0212B"
 
 The bars/line animate in (fixed axis limits throughout, so nothing jitters or rescales frame to
@@ -113,12 +113,12 @@ def main():
     parser.add_argument("--accent", default="#E0212B")
     parser.add_argument("--anim-fraction", type=float, default=0.5, help="fraction of duration spent animating in, rest is a hold")
     parser.add_argument("--static", action="store_true", help="skip the animation, hold the finished chart for the whole duration")
-    parser.add_argument("--transparent", action="store_true", help="render with alpha channel to a .mov (for overlay compositing) instead of an opaque .mp4")
+    parser.add_argument("--transparent", action="store_true", help="render with an alpha channel (qtrle) for overlay compositing, instead of an opaque ProRes clip — both are .mov")
     parser.add_argument("--frames-only", action="store_true", help="write PNG frames to a temp dir and skip ffmpeg encoding (for testing without ffmpeg installed)")
     args = parser.parse_args()
 
-    if args.transparent and not args.out.lower().endswith(".mov"):
-        parser.error("--transparent output must end in .mov")
+    if not args.out.lower().endswith(".mov") and not args.frames_only:
+        parser.error("--out must end in .mov (ProRes/qtrle output — see encode.py's docstring for why not .mp4)")
 
     data = json.loads(args.data)
     labels = list(data.keys())

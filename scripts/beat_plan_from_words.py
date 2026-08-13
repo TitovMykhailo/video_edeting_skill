@@ -159,27 +159,26 @@ def render_fitted_source(source_path, out_path, duration_s, fps, width, height, 
     full source in frame guarantees the subject is never cut off, at the cost of a filled border
     instead of the frame being 100% sharp source pixels — a real tradeoff, but a far smaller one.
 
-    Explicit -pix_fmt yuv420p and -color_range tv as OUTPUT flags, not just the `format=yuv420p`
-    filter step: reproduced live that a JPEG-sourced image (decoded full-range by ffmpeg) still
-    got muxed as yuvj420p/pc/bt470bg — a distinct "JPEG-flavored" pixel format libx264 falls back
-    to when full-range color propagates through the filter chain, even though `format=yuv420p`
-    changed the pixel LAYOUT. Every other clip on the same real timeline came out yuv420p/tv, and
-    the odd one out sat right at the failure point when DaVinci Resolve's internal Fusion pipeline
-    threw a real "MediaOut1 failed at time N" error partway through that specific clip on a real
-    build. The explicit output flags force the standard, consistent tag regardless of what the
-    filter chain's internal range detection decided."""
+    Encodes ProRes 422 (prores_ks), not H.264 — see encode.py's docstring for the full story:
+    a JPEG-sourced image used to get muxed as yuvj420p/pc/bt470bg (an H.264-specific pixel-format
+    quirk, now moot) and separately, EVERY ffmpeg-generated H.264 clip on a real project — correct
+    per every data-level Resolve check (placement count, a post-save re-read, per-clip properties)
+    — rendered as solid black in both Resolve's Edit-page canvas and the final render, while
+    decoding perfectly cleanly in ffmpeg itself. That combination pointed at Resolve's own media
+    engine (not ffmpeg) failing to decode these specific H.264 files. ProRes sidesteps the whole
+    question instead of chasing more H.264 flags."""
     vf = (
         f"split=2[bg][fg];"
         f"[bg]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
         f"gblur=sigma=30,eq=brightness=-0.2[bgb];"
         f"[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[fgs];"
-        f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2,format=yuv420p"
+        f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2"
     )
-    pix_fmt_args = ["-pix_fmt", "yuv420p", "-color_range", "tv"]
+    codec_args = ["-c:v", "prores_ks", "-profile:v", "2", "-pix_fmt", "yuv422p10le"]
     if is_image:
         cmd = [
             "ffmpeg", "-y", "-loop", "1", "-i", source_path,
-            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, *pix_fmt_args, out_path,
+            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, *codec_args, out_path,
         ]
     else:
         # -stream_loop -1 (before -i, so it's an input option) repeats the source indefinitely;
@@ -190,7 +189,7 @@ def render_fitted_source(source_path, out_path, duration_s, fps, width, height, 
         loop_args = ["-stream_loop", "-1"] if loop_source else []
         cmd = [
             "ffmpeg", "-y", *loop_args, "-ss", str(src_in_s), "-i", source_path,
-            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, *pix_fmt_args, "-an", out_path,
+            "-t", str(duration_s), "-r", str(int(fps)), "-filter_complex", vf, *codec_args, "-an", out_path,
         ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
@@ -225,7 +224,8 @@ def render_held_image(image_path, duration_s, fps, out_path, width=None, height=
         [
             "ffmpeg", "-y", "-loop", "1", "-i", image_path,
             "-t", str(duration_s), "-r", str(int(fps)),
-            "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-c:v", "prores_ks", "-profile:v", "2", "-pix_fmt", "yuv422p10le",
             out_path,
         ],
         capture_output=True, text=True, timeout=60,
@@ -349,8 +349,7 @@ def main():
 
         if "generate" in spec:
             gen = spec["generate"]
-            ext = ".mov" if gen.get("transparent") else ".mp4"
-            out_path = os.path.join(args.generated_dir, f"{i:03d}_{gen['kind']}{ext}")
+            out_path = os.path.join(args.generated_dir, f"{i:03d}_{gen['kind']}.mov")
             render_generated(gen, out_path, duration_s, args.fps, width=args.width, height=args.height)
             media = {"path": os.path.abspath(out_path), "src_in": 0.0, "src_out": duration_s, "loop": False}
         elif "media" in spec:
@@ -361,7 +360,7 @@ def main():
                 # See render_held_image()'s docstring: images go through a real render instead
                 # of an in-place trim, sidestepping whatever Resolve does with still durations.
                 abs_image = rel_path if os.path.isabs(rel_path) else os.path.join(args.media_library, rel_path)
-                out_path = os.path.join(args.generated_dir, f"{i:03d}_held_image.mp4")
+                out_path = os.path.join(args.generated_dir, f"{i:03d}_held_image.mov")
                 render_held_image(abs_image, duration_s, args.fps, out_path, width=args.width, height=args.height)
                 media = {"path": os.path.abspath(out_path), "src_in": 0.0, "src_out": duration_s, "loop": False}
             else:
@@ -400,7 +399,7 @@ def main():
                 if args.width and args.height:
                     dims = probe_dimensions(abs_media)
                     if dims and aspect_mismatched(dims[0], dims[1], args.width, args.height):
-                        out_path = os.path.join(args.generated_dir, f"{i:03d}_reframed.mp4")
+                        out_path = os.path.join(args.generated_dir, f"{i:03d}_reframed.mov")
                         render_fitted_source(
                             abs_media, out_path, duration_s, args.fps, args.width, args.height,
                             src_in_s=media["src_in"], is_image=False, loop_source=media.get("loop", False),

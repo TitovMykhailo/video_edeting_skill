@@ -5,7 +5,7 @@ needed. This is the zero-heavy-dependency tier for "typography frame" / "kinetic
 exist as a pre-made meme clip — sometimes it's faster to draw it than to find it.
 
 Usage:
-    python3 kinetic_text.py --text "SELF EDUCATE" --out out/generated/self_educate.mp4 \
+    python3 kinetic_text.py --text "SELF EDUCATE" --out out/generated/self_educate.mov \
         --duration 1.4 --fps 30 --width 1920 --height 1080 \
         --bg "#0A0A0A" --fg "#FFFFFF" --accent "#E0212B" --accent-words "EDUCATE"
 
@@ -219,12 +219,12 @@ def main():
     parser.add_argument("--font-path", help="path to a .ttf/.ttc font; auto-detects a system bold font if omitted")
     parser.add_argument("--font-size", type=int, default=140)
     parser.add_argument("--anim-fraction", type=float, default=0.35, help="fraction of duration spent animating in, rest is a hold")
-    parser.add_argument("--transparent", action="store_true", help="render with alpha channel to a .mov (for overlay compositing) instead of an opaque .mp4")
+    parser.add_argument("--transparent", action="store_true", help="render with an alpha channel (qtrle) for overlay compositing, instead of an opaque ProRes clip — both are .mov")
     parser.add_argument("--frames-only", action="store_true", help="write PNG frames to a temp dir and skip ffmpeg encoding (for testing without ffmpeg installed)")
     args = parser.parse_args()
 
-    if args.transparent and not args.out.lower().endswith(".mov"):
-        parser.error("--transparent output must end in .mov")
+    if not args.out.lower().endswith(".mov") and not args.frames_only:
+        parser.error("--out must end in .mov (ProRes/qtrle output — see encode.py's docstring for why not .mp4)")
 
     generate(args)
 
