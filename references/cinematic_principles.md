@@ -253,7 +253,14 @@ composition; nonstop music at one constant intensity; syncing every visual event
 that merely repeats the narration literally (illustrative b-roll should still add something — a
 specific angle, a texture, a detail — not just restate the word being said); meaningless drone
 shots; effects that paper over weak composition; copying a reference creator shot-for-shot;
-mistaking visual density for quality; manipulative clickbait as a substitute for an actual hook.
+mistaking visual density for quality; manipulative clickbait as a substitute for an actual hook;
+defaulting to a bare text card on a flat background for a hook, CTA, or emphasis beat instead of
+finding or building a real visual — text-on-color is the easiest option to reach for, not a style
+choice, and it should lose to an actual sourced or composited visual whenever one exists (pair
+generated text with motion/footage via transparent overlay compositing, or replace it outright
+with a strong real clip and let captions carry the words instead). A hook beat especially: it's
+the single highest-leverage 3 seconds in the video, and "bold text on black" is rarely the most
+interesting thing that could be there.
 
 ## Critique output format
 

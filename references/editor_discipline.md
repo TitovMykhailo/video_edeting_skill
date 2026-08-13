@@ -315,6 +315,26 @@ and why) rather than leaving "this feels weak" as the final answer. Don't skip s
 based on your own read of the frames; the point is the second opinion having no stake in the
 original choices.
 
+**Verify a critique agent's specific technical claims against the real pipeline before acting on
+them, the same way any other diagnostic claim in this skill gets verified (see the `AppendToTimeline`
+saga elsewhere in this skill's history).** Run live: a critique agent flagged what it called
+"visible pillarboxing" on two beats, describing it as a cropping bug. Rendering those two beats in
+isolation (bypassing the full assembled composite) and inspecting the frames directly showed the
+plain-looking region was real source content (a blank wall, a cartoon's flat background) — the fit
+pipeline was working correctly; the agent had no visibility into the render pipeline and mistook
+boring-but-correct footage for a technical defect. The underlying finding was still real and worth
+acting on (that footage was genuinely under-using the frame), just not for the reason claimed — the
+actual fix was punching in on the subject, not "fixing a crop." A critique agent watches frames, not
+code; it can misdiagnose *why* something looks wrong even when it's right that something does.
+Meanwhile the same pass's other finding — that several beats were near-pixel-identical across their
+whole duration because a held image/gif/clip render never moved — held up completely under direct
+frame comparison and pointed straight at a real, fixable gap: nothing in the render pipeline ever
+varied a held beat's framing over its own duration. `beat_plan_from_words.py`'s
+`zoom_rate`/`pan_x`/`pan_y` (see `beat_plan_schema.md`) exists because of that finding — a small,
+default-on Ken Burns push that also gives an easy, low-risk way to make a hook or payoff beat read
+as more charged than the beats around it (raise the rate, bias the pan toward the actual subject)
+without needing a different source clip.
+
 ## 25. Retention engines, not just cut speed
 
 "More cuts" is not a retention strategy on its own. Name, per section, what's actually earning the

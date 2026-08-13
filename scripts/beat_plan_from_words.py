@@ -13,9 +13,17 @@ worth running afterward — it also checks script-word coverage (missing/duplica
 this script doesn't verify — but the gap/overlap class of bug specifically can't happen here.
 
 Beats are specified in a spec file: a JSON list of objects, each either
-    {"end_word": <int>, "intent": "...", "media": {"path": ..., "src_in"?, "src_out"?, "loop"?}, "reasoning": "...", "sfx"?: [...]}
+    {"end_word": <int>, "intent": "...", "media": {"path": ..., "src_in"?, "src_out"?, "loop"?, "zoom_rate"?, "pan_x"?, "pan_y"?}, "reasoning": "...", "sfx"?: [...]}
 or
     {"end_word": <int>, "intent": "...", "generate": {"kind": "kinetic_text"|"chart", ...}, "reasoning": "..."}
+
+media.zoom_rate/pan_x/pan_y (only apply when the beat actually goes through render_fitted_source/
+render_held_image — i.e. an image beat, or a video beat whose aspect doesn't match the target —
+see aspect_mismatched()): override the default gentle Ken Burns push-in (see
+render_fitted_source()'s docstring). Every such beat gets zoom_rate=0.025/pan centered by
+default even with no override — leave it alone for an ordinary beat, raise zoom_rate (e.g.
+0.05-0.09) and set pan_x/pan_y toward the beat's actual subject for a hook or payoff beat that
+should read as more charged than the beats around it, or set zoom_rate=0 to disable entirely.
 
 "end_word" is a 0-based, EXCLUSIVE index into edit_plan.json's words_new_timeline — the beat
 covers from the previous entry's end_word up to (not including) this one. The list must end with
@@ -32,9 +40,14 @@ rendered file — so generated-text/chart timing always matches the beat instead
 separately and hoping it lines up.
 
 generate.kind == "kinetic_text": pass through fields matching kinetic_text.py's CLI (text,
-    accent_words, accent, font_size, transparent, bg, fg). accent_words may be a JSON list
-    (["GARAGE.", "TRILLION"]) or a single space-separated string — either is joined into the one
-    space-separated string kinetic_text.py's --accent-words actually expects.
+    accent_words, accent, font_size, transparent, bg, fg, bg_image, bg_blur, bg_darken).
+    accent_words may be a JSON list (["GARAGE.", "TRILLION"]) or a single space-separated string
+    — either is joined into the one space-separated string kinetic_text.py's --accent-words
+    actually expects. bg_image is a real photo to blur+darken as the background instead of flat
+    --bg color (see kinetic_text.py's build_blurred_background()) — a real image reads far less
+    like placeholder content than flat color; prefer it for any hook/CTA/emphasis text card where
+    a suitable image exists. Path is relative to --media-library, same convention as a "media"
+    beat's path. Incompatible with transparent:true.
 generate.kind == "chart": pass through fields matching chart.py's CLI (chart_type -> --type,
     data, title, transparent, bg, fg, accent). `data` must be a JSON OBJECT of label -> number,
     e.g. {"1998": 1, "Now": 100} — key order is preserved as category/x order. NOT a list of
@@ -144,7 +157,7 @@ def aspect_mismatched(src_w, src_h, target_w, target_h, tolerance=0.1):
     return abs(src_ar - target_ar) / target_ar > tolerance
 
 
-def render_fitted_source(source_path, out_path, duration_s, fps, width, height, src_in_s=0.0, is_image=False, loop_source=False):
+def render_fitted_source(source_path, out_path, duration_s, fps, width, height, src_in_s=0.0, is_image=False, loop_source=False, zoom_rate=0.025, pan_x=0.5, pan_y=0.5):
     """Render `duration_s` of `source_path` into an exact width x height clip, fitting the WHOLE
     source in frame (never cropping into it) via a blurred, darkened, filled copy of the same
     source behind it — the standard "reel-ify" technique, not plain letterbox bars. Used whenever
@@ -166,7 +179,27 @@ def render_fitted_source(source_path, out_path, duration_s, fps, width, height, 
     — rendered as solid black in both Resolve's Edit-page canvas and the final render, while
     decoding perfectly cleanly in ffmpeg itself. That combination pointed at Resolve's own media
     engine (not ffmpeg) failing to decode these specific H.264 files. ProRes sidesteps the whole
-    question instead of chasing more H.264 flags."""
+    question instead of chasing more H.264 flags.
+
+    zoom_rate/pan_x/pan_y add a slow Ken Burns push-in on top of the fit — a fractional
+    growth-per-second (0.025 = the frame is ~2.5% larger per second of clip) cropped back down to
+    exactly width x height every frame, panning toward (pan_x, pan_y) in [0,1]x[0,1] (0.5/0.5 =
+    zoom centered in place; e.g. pan_x=0.8 drifts the crop window toward the right side of the
+    frame as it zooms). Added directly in response to a dispatched critique agent's real finding
+    on this skill's own first real project (see editor_discipline.md Part 24's critique-loop
+    process): 5 of the agent's 16 sampled frames were near-duplicates of their neighbor because a
+    held image/gif/short clip render was perfectly static — "if you pulled the captions off, you
+    couldn't tell these apart." A continuous zoom means no two frames of a held beat are ever
+    pixel-identical, and a stronger zoom_rate/off-center pan on a hook or payoff beat doubles as
+    the "escalate the energy on the important beats" fix the same critique asked for, instead of
+    every beat reading at the same flat visual weight. zoom_rate=0 reproduces the old static
+    behavior exactly (the scale/crop step is skipped entirely, not just a no-op zoom=1 pass).
+    Implemented as scale(eval=frame, growing with `t`) + crop back to size — not the zoompan
+    filter — specifically to keep frame count exact: this codebase's to_frame()/beat-timing
+    discipline (see this module's own to_frame() docstring) depends on every render landing on
+    the exact requested frame count, and zoompan has a known history of off-by-some-frames /
+    stutter quirks under exactly that kind of scrutiny; scale+crop never adds, drops, or freezes a
+    frame since it runs once per input frame like any other filter in this chain."""
     vf = (
         f"split=2[bg][fg];"
         f"[bg]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
@@ -174,6 +207,12 @@ def render_fitted_source(source_path, out_path, duration_s, fps, width, height, 
         f"[fg]scale={width}:{height}:force_original_aspect_ratio=decrease[fgs];"
         f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2"
     )
+    if zoom_rate:
+        zoom_expr = f"1+{zoom_rate}*t"
+        vf += (
+            f"[flat];[flat]scale=w='iw*({zoom_expr})':h='ih*({zoom_expr})':eval=frame,"
+            f"crop={width}:{height}:x='(iw-{width})*{pan_x}':y='(ih-{height})*{pan_y}'"
+        )
     codec_args = ["-c:v", "prores_ks", "-profile:v", "2", "-pix_fmt", "yuv422p10le"]
     if is_image:
         cmd = [
@@ -196,7 +235,7 @@ def render_fitted_source(source_path, out_path, duration_s, fps, width, height, 
         raise RuntimeError(f"Rendering fitted clip {source_path} -> {out_path} failed:\n{result.stderr[-2000:]}")
 
 
-def render_held_image(image_path, duration_s, fps, out_path, width=None, height=None):
+def render_held_image(image_path, duration_s, fps, out_path, width=None, height=None, zoom_rate=0.025, pan_x=0.5, pan_y=0.5):
     """Render a still image to a short video clip holding it for exactly duration_s.
 
     Why: a still image handed to Resolve's AppendToTimeline with an explicit startFrame/endFrame
@@ -218,7 +257,7 @@ def render_held_image(image_path, duration_s, fps, out_path, width=None, height=
     not already close to the target aspect. Now delegates to render_fitted_source(), which fits
     the whole image in frame instead of cropping into it — see that function's docstring."""
     if width and height:
-        render_fitted_source(image_path, out_path, duration_s, fps, width, height, is_image=True)
+        render_fitted_source(image_path, out_path, duration_s, fps, width, height, is_image=True, zoom_rate=zoom_rate, pan_x=pan_x, pan_y=pan_y)
         return
     result = subprocess.run(
         [
@@ -234,7 +273,7 @@ def render_held_image(image_path, duration_s, fps, out_path, width=None, height=
         raise RuntimeError(f"Rendering held image {image_path} -> {out_path} failed:\n{result.stderr[-2000:]}")
 
 
-def render_generated(gen, out_path, duration_s, fps, width=None, height=None):
+def render_generated(gen, out_path, duration_s, fps, width=None, height=None, media_library=None):
     # --fps must be passed through explicitly: kinetic_text.py/chart.py each round
     # (duration * their own --fps) to a frame count independently, defaulting to 30 if not told
     # otherwise. duration_s here was back-computed from a frame count at *this* script's --fps
@@ -267,6 +306,16 @@ def render_generated(gen, out_path, duration_s, fps, width=None, height=None):
             cmd += ["--font-size", str(gen["font_size"])]
         if gen.get("bg"):
             cmd += ["--bg", gen["bg"]]
+        if gen.get("bg_image"):
+            # Same convention as a "media" beat's path: relative to --media-library, or already
+            # absolute.
+            bg_image = gen["bg_image"]
+            abs_bg_image = bg_image if os.path.isabs(bg_image) else os.path.join(media_library or "", bg_image)
+            cmd += ["--bg-image", abs_bg_image]
+            if gen.get("bg_blur") is not None:
+                cmd += ["--bg-blur", str(gen["bg_blur"])]
+            if gen.get("bg_darken") is not None:
+                cmd += ["--bg-darken", str(gen["bg_darken"])]
         if gen.get("fg"):
             cmd += ["--fg", gen["fg"]]
     elif kind == "chart":
@@ -350,7 +399,7 @@ def main():
         if "generate" in spec:
             gen = spec["generate"]
             out_path = os.path.join(args.generated_dir, f"{i:03d}_{gen['kind']}.mov")
-            render_generated(gen, out_path, duration_s, args.fps, width=args.width, height=args.height)
+            render_generated(gen, out_path, duration_s, args.fps, width=args.width, height=args.height, media_library=args.media_library)
             media = {"path": os.path.abspath(out_path), "src_in": 0.0, "src_out": duration_s, "loop": False}
         elif "media" in spec:
             media = dict(spec["media"])
@@ -361,7 +410,10 @@ def main():
                 # of an in-place trim, sidestepping whatever Resolve does with still durations.
                 abs_image = rel_path if os.path.isabs(rel_path) else os.path.join(args.media_library, rel_path)
                 out_path = os.path.join(args.generated_dir, f"{i:03d}_held_image.mov")
-                render_held_image(abs_image, duration_s, args.fps, out_path, width=args.width, height=args.height)
+                render_held_image(
+                    abs_image, duration_s, args.fps, out_path, width=args.width, height=args.height,
+                    zoom_rate=media.get("zoom_rate", 0.025), pan_x=media.get("pan_x", 0.5), pan_y=media.get("pan_y", 0.5),
+                )
                 media = {"path": os.path.abspath(out_path), "src_in": 0.0, "src_out": duration_s, "loop": False}
             else:
                 abs_media = rel_path if os.path.isabs(rel_path) else os.path.join(args.media_library, rel_path)
@@ -403,6 +455,7 @@ def main():
                         render_fitted_source(
                             abs_media, out_path, duration_s, args.fps, args.width, args.height,
                             src_in_s=media["src_in"], is_image=False, loop_source=media.get("loop", False),
+                            zoom_rate=media.get("zoom_rate", 0.025), pan_x=media.get("pan_x", 0.5), pan_y=media.get("pan_y", 0.5),
                         )
                         media = {"path": os.path.abspath(out_path), "src_in": 0.0, "src_out": duration_s, "loop": False}
         else:

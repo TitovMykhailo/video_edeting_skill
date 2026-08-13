@@ -176,6 +176,17 @@ Guidance on filling this in:
   gap on the video track (the build script prints a warning when this happens). Loop, trim the
   beat's own `end` down to the clip's actual length, or pick a longer clip — don't rely on a hold
   that isn't actually implemented.
+- **`media.zoom_rate`/`pan_x`/`pan_y`** (ffmpeg-assembly path only — `beat_plan_from_words.py`'s
+  `render_fitted_source`/`render_held_image`, used for any beat whose source needs fitting/blur-fill
+  rather than a straight crop) add a slow Ken Burns push-in on top of the fit, so a held image/gif/
+  short clip is never perfectly static across its own duration. Every such beat gets a gentle
+  default (`zoom_rate=0.025`, pan centered) even with no override; raise `zoom_rate` (0.05-0.09) and
+  bias `pan_x`/`pan_y` toward the actual subject (0=left/top of frame, 1=right/bottom, 0.5=center)
+  on a hook or payoff beat that should read as more charged than the beats around it. Added after a
+  dispatched critique agent (see `editor_discipline.md` Part 24) found that several "different"
+  beats in a real build were pixel-near-identical at every sampled timestamp — a held clip with no
+  zoom shows the viewer nothing new for its whole duration even when the cut list looks varied on
+  paper.
 - Update `out/recent_uses.json` (a flat list of media paths) as you go, and consult it — a clip
   used in the last `media.meme_frequency_cap_s` seconds of runtime should be deprioritized unless
   it's a deliberate running gag. Track sound picks in the same file, alongside visual ones, so a
