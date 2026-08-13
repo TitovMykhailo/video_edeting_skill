@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Video Editor Dashboard</title>
+<style>
+  :root {
+    --bg: #1a1a1e; --panel: #232328; --panel2: #2a2a30; --border: #3a3a42;
+    --text: #e8e8ec; --muted: #9a9aa5; --accent: #4f8cff; --ok: #3ecf8e;
+    --warn: #f5a623; --err: #ef4444; --mono: 'Cascadia Code', Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, sans-serif; height: 100vh; overflow: hidden; }
+  #app { display: flex; height: 100vh; }
+  #sidebar { width: 280px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px; }
+  #sidebar h1 { font-size: 15px; margin: 4px 4px 14px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .project-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .project-item:hover { background: var(--panel2); }
+  .project-item.active { background: var(--panel2); outline: 1px solid var(--accent); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.idle { background: var(--muted); }
+  .dot.running { background: var(--warn); animation: pulse 1.2s infinite; }
+  .dot.done { background: var(--ok); }
+  .dot.error { background: var(--err); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  .project-name { font-weight: 600; font-size: 14px; }
+  .project-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  #main { flex: 1; overflow-y: auto; padding: 24px 32px; }
+  .empty { color: var(--muted); padding: 40px; text-align: center; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tab { padding: 8px 16px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; font-size: 14px; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+  .row { display: flex; gap: 24px; flex-wrap: wrap; }
+  .stat { min-width: 140px; }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .stat-value { font-size: 15px; margin-top: 2px; }
+  button { background: var(--accent); color: #fff; border: none; border-radius: 7px; padding: 9px 16px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  button:hover { opacity: .9; }
+  button:disabled { background: var(--panel2); color: var(--muted); cursor: not-allowed; }
+  button.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--panel2); }
+  .intent-tag { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--panel2); color: var(--muted); white-space: nowrap; }
+  .note-input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 6px 8px; font-size: 12px; resize: vertical; min-height: 32px; }
+  .reasoning { color: var(--muted); font-size: 12px; max-width: 320px; }
+  .media-path { font-family: var(--mono); font-size: 11px; color: var(--muted); word-break: break-all; }
+  pre.log { background: #111114; border-radius: 8px; padding: 14px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto; }
+  .critique-card { margin-bottom: 20px; }
+  .critique-meta { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .findings { font-size: 13px; line-height: 1.6; }
+  .findings h1, .findings h2, .findings h3 { font-size: 14px; color: var(--accent); margin: 14px 0 6px; }
+  .findings code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); font-size: 12px; }
+  .frames-strip { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0; }
+  .frames-strip img { height: 160px; border-radius: 6px; border: 1px solid var(--border); flex-shrink: 0; }
+  .muted { color: var(--muted); }
+  .save-note-row { display: flex; gap: 6px; align-items: flex-start; margin-top: 4px; }
+  .save-note-row button { padding: 5px 10px; font-size: 11px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <h1>Проекты</h1>
+    <div id="project-list"></div>
+  </div>
+  <div id="main"><div class="empty">Загрузка…</div></div>
+</div>
+<script>
+const state = { projects: [], current: null, tab: 'overview', beats: [], critiques: [], jobPoll: null };
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { const e = await r.json().catch(() => ({error: r.statusText})); throw new Error(e.error || r.statusText); }
+  return r.json();
+}
+
+function fmtTime(ts) {
+  if (!ts) return '—';
+  return new Date(ts * 1000).toLocaleString('ru-RU');
+}
+
+async function refreshProjects() {
+  const { projects } = await api('/api/projects');
+  state.projects = projects;
+  if (!state.current && projects.length) state.current = projects[0].name;
+  renderSidebar();
+  if (state.current) renderMain();
+}
+
+function renderSidebar() {
+  const list = document.getElementById('project-list');
+  if (!state.projects.length) { list.innerHTML = '<div class="muted" style="padding:8px">Проектов не найдено</div>'; return; }
+  list.innerHTML = state.projects.map(p => {
+    const status = p.active_job ? 'running' : (p.assembled_count ? 'done' : 'idle');
+    return `<div class="project-item ${p.name === state.current ? 'active' : ''}" onclick="selectProject('${p.name}')">
+      <div class="dot ${status}"></div>
+      <div>
+        <div class="project-name">${p.name}</div>
+        <div class="project-sub">${p.latest_assembled || 'нет сборки'}${p.critique_count ? ' · критика: ' + p.critique_count : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.selectProject = (name) => { state.current = name; state.tab = 'overview'; renderSidebar(); renderMain(); };
+window.selectTab = (tab) => { state.tab = tab; renderMain(); };
+
+async function renderMain() {
+  const main = document.getElementById('main');
+  const proj = state.projects.find(p => p.name === state.current);
+  if (!proj) { main.innerHTML = '<div class="empty">Нет проекта</div>'; return; }
+
+  const tabs = ['overview', 'beats', 'critique', 'log'];
+  const tabLabels = { overview: 'Обзор', beats: 'Биты', critique: 'Критика', log: 'Лог сборки' };
+  main.innerHTML = `
+    <div class="tabs">${tabs.map(t => `<div class="tab ${state.tab === t ? 'active' : ''}" onclick="selectTab('${t}')">${tabLabels[t]}</div>`).join('')}</div>
+    <div id="tab-content"></div>`;
+  const content = document.getElementById('tab-content');
+
+  if (state.tab === 'overview') {
+    content.innerHTML = `
+      <div class="card">
+        <div class="row">
+          <div class="stat"><div class="stat-label">Последняя сборка (ffmpeg)</div><div class="stat-value">${proj.latest_assembled || '—'}</div></div>
+          <div class="stat"><div class="stat-label">Обновлено</div><div class="stat-value">${fmtTime(proj.latest_assembled_mtime)}</div></div>
+          <div class="stat"><div class="stat-label">Резолв-рендер</div><div class="stat-value">${proj.has_resolve_render ? 'есть' : 'нет'}</div></div>
+          <div class="stat"><div class="stat-label">Отчётов критики</div><div class="stat-value">${proj.critique_count}</div></div>
+        </div>
+        <div style="margin-top:16px; display:flex; gap:10px;">
+          <button id="build-btn" onclick="startBuild('${proj.name}')" ${proj.active_job ? 'disabled' : ''}>${proj.active_job ? 'Сборка идёт…' : '▶ Собрать (ffmpeg)'}</button>
+          <button class="secondary" onclick="selectTab('log')">Смотреть лог</button>
+        </div>
+        <div class="muted" style="margin-top:12px; font-size:12px;">Сборка через DaVinci Resolve запускается только одним кликом внутри самого Resolve (меню Workspace &gt; Scripts) — бесплатная версия блокирует запуск скриптов извне, отсюда это не автоматизировать.</div>
+      </div>`;
+    if (proj.active_job) pollJob(proj.active_job);
+  }
+
+  if (state.tab === 'beats') {
+    content.innerHTML = '<div class="muted">Загрузка битов…</div>';
+    const { beats } = await api('/api/beats?project=' + encodeURIComponent(proj.name));
+    state.beats = beats;
+    content.innerHTML = `<div class="card"><table><thead><tr>
+      <th>#</th><th>Время</th><th>Текст</th><th>Intent</th><th>Медиа</th><th>Обоснование</th><th>Заметка</th>
+    </tr></thead><tbody>${beats.map(b => `
+      <tr>
+        <td>${b.index}</td>
+        <td class="muted">${b.start?.toFixed(2)}–${b.end?.toFixed(2)}s</td>
+        <td>${escapeHtml(b.text || '')}</td>
+        <td><span class="intent-tag">${b.intent || ''}</span></td>
+        <td class="media-path">${(b.media_path || '').split(/[\\\\/]/).pop()}</td>
+        <td class="reasoning">${escapeHtml(b.reasoning || '')}</td>
+        <td>
+          <textarea class="note-input" id="note-${b.index}" placeholder="напр.: тут другой тон/голос">${escapeHtml(b.note || '')}</textarea>
+          <div class="save-note-row">
+            <button onclick="saveNote('${proj.name}', ${b.index})">Сохранить</button>
+            ${b.note_updated ? `<span class="muted" style="font-size:11px; align-self:center;">сохранено ${b.note_updated}</span>` : ''}
+          </div>
+        </td>
+      </tr>`).join('')}</tbody></table></div>`;
+  }
+
+  if (state.tab === 'critique') {
+    content.innerHTML = '<div class="muted">Загрузка критики…</div>';
+    const { critiques } = await api('/api/critique?project=' + encodeURIComponent(proj.name));
+    if (!critiques.length) {
+      content.innerHTML = '<div class="card muted">Пока нет сохранённых отчётов критики для этого проекта.</div>';
+      return;
+    }
+    content.innerHTML = critiques.map(c => `
+      <div class="card critique-card">
+        <div class="critique-meta">${c.timestamp} · видео: ${c.video || '—'}</div>
+        ${c.summary ? `<div style="margin-bottom:10px; font-weight:600;">${escapeHtml(c.summary)}</div>` : ''}
+        ${(c.frames || []).length ? `<div class="frames-strip">${c.frames.map(f => `<img src="/api/frame?project=${encodeURIComponent(proj.name)}&path=${encodeURIComponent('critique/frames/' + f)}">`).join('')}</div>` : ''}
+        <div class="findings">${mdToHtml(c.findings_markdown || '')}</div>
+      </div>`).join('');
+  }
+
+  if (state.tab === 'log') {
+    content.innerHTML = `<div class="card"><pre class="log" id="log-box">${proj.active_job ? 'Загрузка лога…' : 'Нет активной сборки. Последний лог не сохраняется между перезапусками сервера.'}</pre></div>`;
+    if (proj.active_job) pollJob(proj.active_job);
+  }
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function mdToHtml(md) {
+  let html = escapeHtml(md);
+  html = html.replace(/^### (.*)$/gm, '<h3>$1</h3>').replace(/^## (.*)$/gm, '<h2>$1</h2>').replace(/^# (.*)$/gm, '<h1>$1</h1>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+  html = html.split(/\n{2,}/).map(p => p.startsWith('<h') ? p : `<p>${p}</p>`).join('');
+  return html;
+}
+
+async function startBuild(name) {
+  const btn = document.getElementById('build-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Запуск…'; }
+  try {
+    const { job_id } = await api('/api/build', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ project: name, mode: 'ffmpeg' }) });
+    await refreshProjects();
+    selectTab('log');
+    pollJob(job_id);
+  } catch (e) {
+    alert('Не удалось запустить сборку: ' + e.message);
+    await refreshProjects();
+  }
+}
+
+async function saveNote(project, index) {
+  const note = document.getElementById('note-' + index).value;
+  await api('/api/beats/note', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ project, index, note }) });
+  await selectTab('beats');
+}
+
+function pollJob(jobId) {
+  if (state.jobPoll) clearInterval(state.jobPoll);
+  const tick = async () => {
+    try {
+      const job = await api('/api/jobs/' + jobId);
+      const box = document.getElementById('log-box');
+      if (box) { box.textContent = job.log || '(пусто)'; box.scrollTop = box.scrollHeight; }
+      if (job.status !== 'running') {
+        clearInterval(state.jobPoll);
+        state.jobPoll = null;
+        await refreshProjects();
+      }
+    } catch (e) { clearInterval(state.jobPoll); state.jobPoll = null; }
+  };
+  tick();
+  state.jobPoll = setInterval(tick, 1500);
+}
+
+refreshProjects();
+setInterval(refreshProjects, 5000);
+</script>
+</body>
+</html>

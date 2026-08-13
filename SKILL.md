@@ -71,6 +71,32 @@ environment, including this one if you're remote:
 Skip straight past the environment check below for these two — it only gates the actual Resolve
 build.
 
+## Optional: local dashboard for multiple projects
+
+`ui/server.py` is a small stdlib-only local web dashboard (no pip install) for when someone is
+juggling more than one project: `python ui/server.py --projects-root <folder of project folders>
+--port 8787`, then open `http://localhost:8787`. It shows every subfolder with an
+`out/beat_plan.json` as a project, and per project:
+
+- **Build**, which launches `assemble_video.py` as its own background OS process — multiple
+  projects can build at once, nothing here blocks anything else (the Resolve/OTIO path still needs
+  one click inside Resolve's own Scripts menu, same as always — this dashboard can't trigger that).
+- **Beats**, a table of every beat's text/intent/reasoning/media with an editable note field per
+  beat, saved to `out/beat_notes.json` — a durable place for a person to flag "wrong tone here, use
+  a calmer clip" against a specific beat instead of it living only in chat scrollback. Check this
+  file when picking the project back up.
+- **Critique**, which renders whatever's under `out/critique/*.json`. This dashboard never
+  generates a critique itself (that still means dispatching a real Agent from a Claude Code
+  conversation, per Part 24 of `editor_discipline.md`) — after running one, write its result into
+  that folder so it's visible afterward:
+  ```python
+  {"timestamp": "...", "video": "assembled_v3.mp4", "summary": "one-line take",
+   "findings_markdown": "...full critique text...", "frames": ["frame_0_5s.png", ...]}
+  ```
+  written to `out/critique/<timestamp>.json`, with the referenced frame files copied into
+  `out/critique/frames/` first. `ui/server.py`'s `write_critique_result()` is a working reference
+  for this exact shape.
+
 ## Before anything else: confirm the environment
 
 DaVinci Resolve's scripting API only works against a **running, local** copy of Resolve. If you

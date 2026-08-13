@@ -7,3 +7,4 @@ config.json
 *.mov
 .DS_Store
 .resolve_job.json
+ui/start_ui.bat
