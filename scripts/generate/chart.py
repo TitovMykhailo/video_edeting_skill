@@ -108,7 +108,7 @@ def main():
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
     parser.add_argument("--dpi", type=int, default=100)
-    parser.add_argument("--bg", default="#0A0A0A")
+    parser.add_argument("--bg", default="#080818", help="matches kinetic_text.py's default base tone (dark navy, not flat black — calibrated against a real reference breakdown) for visual consistency across generated beats in the same video")
     parser.add_argument("--fg", default="#FFFFFF")
     parser.add_argument("--accent", default="#E0212B")
     parser.add_argument("--anim-fraction", type=float, default=0.5, help="fraction of duration spent animating in, rest is a hold")

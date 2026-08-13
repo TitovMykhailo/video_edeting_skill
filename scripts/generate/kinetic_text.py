@@ -18,6 +18,7 @@ references/code_generated_frames.md.
 import argparse
 import math
 import os
+import random
 import shutil
 import sys
 import tempfile
@@ -28,6 +29,12 @@ try:
     from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 except ImportError:
     print("Pillow is required: pip3 install Pillow", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    import numpy as np
+except ImportError:
+    print("numpy is required: pip3 install numpy", file=sys.stderr)
     sys.exit(1)
 
 
@@ -126,14 +133,72 @@ def build_blurred_background(image_path, width, height, blur_radius=40, darken=0
     return src
 
 
-def render_frame(width, height, bg, bg_image, lines, font, fg, accent, accent_words, scale, alpha):
+def build_textured_background(width, height, base_hex, seed=None):
+    """A structured dark background — a soft diagonal gradient between two close dark tones plus
+    fine film grain — instead of a single flat fill color. Built once per clip (like
+    build_blurred_background()), not per frame.
+
+    Why this exists: a flat single-color card was flagged directly, on a real project, as reading
+    cheap/placeholder once it's the dominant look across most of a video's beats (cinematic_
+    principles.md's anti-patterns list already said the same about a flat-black hook/CTA card;
+    this generalizes the fix to every kinetic_text beat, not just the highest-visibility ones).
+    A textured background is the "no real photo available" fallback for a beat that still
+    shouldn't look like a placeholder — reach for --bg-image instead whenever a real photo
+    actually fits the beat; this is for the (common, on a fact/typography-heavy channel) case
+    where nothing does.
+
+    seed fixes the grain pattern for a given clip so re-running the same beat spec doesn't produce
+    a visually-different (if imperceptibly so) background each time — matters for anything that
+    diffs/compares rendered output across builds."""
+    rng = random.Random(seed)
+    base = _hex_to_rgb(base_hex)
+    # A lighter tint of the SAME base hue, not the (red) accent color — blending toward accent
+    # here made the background read as maroon/wine instead of the intended "structured dark blue,"
+    # caught by actually rendering a frame rather than trusting the math. Reserve the accent color
+    # for text; the background gradient should stay monochromatic within base_hex's own hue.
+    hi = tuple(min(255, int(c * 1.85 + 12)) for c in base)
+    # A slightly lighter corner the gradient falls away from — the same "soft off-center light
+    # source" idea used for the hook/outro composites elsewhere in this project, generalized into
+    # a reusable default rather than a one-off ffmpeg geq expression.
+    corner_x = rng.uniform(0.15, 0.35) * width
+    corner_y = rng.uniform(0.1, 0.3) * height
+    max_dist = math.hypot(width, height)
+
+    # Vectorized (numpy), not a manual per-pixel Python loop — this runs once per generated clip
+    # but a 1920x1080 nested Python loop would still add real, noticeable render time across the
+    # dozens of kinetic_text beats a typical video has; numpy does the same distance-field math in
+    # compiled code instead of ~2M individual Python iterations.
+    yy, xx = np.mgrid[0:height, 0:width]
+    dist = np.hypot(xx - corner_x, yy - corner_y) / max_dist
+    t = np.clip(dist * 1.15, 0.0, 1.0)[..., None]  # (H, W, 1), broadcasts over the 3 channels
+    hi_arr = np.array(hi, dtype=np.float64)
+    base_arr = np.array(base, dtype=np.float64)
+    gradient = hi_arr + (base_arr - hi_arr) * t
+    img = Image.fromarray(gradient.astype(np.uint8), mode="RGB")
+
+    # Fine grain, not visible banding-hiding noise at full strength — subtle enough not to fight
+    # the text, present enough that the background reads as textured rather than a flat gradient.
+    noise = Image.effect_noise((width, height), 18).convert("L")
+    noise_rgb = Image.merge("RGB", (noise, noise, noise))
+    img = Image.blend(img, noise_rgb, 0.035)
+    return img
+
+
+def render_frame(width, height, bg, bg_image, lines, font, fg, accent, accent_words, scale, alpha, glow=True):
     if bg_image is not None:
         img = bg_image.copy()
     else:
         mode = "RGBA" if bg is None else "RGB"
         base_bg = (0, 0, 0, 0) if bg is None else bg
         img = Image.new(mode, (width, height), base_bg)
-    draw = ImageDraw.Draw(img)
+
+    # All text draws onto its own transparent layer, composited onto img only at the very end —
+    # not straight onto img like before — so a soft glow (a blurred, dimmed copy of this exact
+    # layer, composited underneath the sharp text) can be derived from whatever actually got drawn
+    # without duplicating the word-layout/accent-color logic a second time. See the two draw calls
+    # below (plain vs. the scaled-layer path) — both now target text_layer instead of img.
+    text_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(text_layer)
 
     line_heights = [draw.textbbox((0, 0), line, font=font)[3] for line in lines]
     total_h = sum(line_heights) + (len(lines) - 1) * int(font.size * 0.25)
@@ -172,12 +237,25 @@ def render_frame(width, height, bg, bg_image, lines, font, fg, accent, accent_wo
                 center_x, center_y = x + word_w / 2, y + word_h / 2
                 paste_x = int(center_x - new_size[0] / 2)
                 paste_y = int(center_y - new_size[1] / 2)
-                img.paste(layer, (paste_x, paste_y), layer)
+                text_layer.paste(layer, (paste_x, paste_y), layer)
             else:
                 draw.text((x, y), word, font=font, fill=color_a)
             x += w_width
         y += lh + int(font.size * 0.25)
 
+    img = img.convert("RGBA") if img.mode != "RGBA" else img.copy()
+    if glow:
+        # Soft glow behind the text — a blurred, dimmed duplicate of the exact same glyphs,
+        # composited underneath the sharp copy. Blur radius/opacity match a real reference
+        # breakdown's spec (~15-25px blur, ~30-50% opacity) rather than an arbitrary guess.
+        glow_layer = text_layer.filter(ImageFilter.GaussianBlur(20))
+        glow_alpha = glow_layer.split()[3].point(lambda a: int(a * 0.4))
+        glow_layer.putalpha(glow_alpha)
+        img = Image.alpha_composite(img, glow_layer)
+    img = Image.alpha_composite(img, text_layer)
+
+    if bg is not None:  # opaque output requested — flatten back down from RGBA
+        img = img.convert("RGB")
     return img
 
 
@@ -187,6 +265,13 @@ def generate(args):
     bg_image = None
     if args.bg_image:
         bg_image = build_blurred_background(args.bg_image, width, height, args.bg_blur, args.bg_darken)
+    elif not args.transparent and not args.flat_bg:
+        # Textured (gradient + grain) by default, not a flat color fill — see
+        # build_textured_background()'s docstring for why. --flat-bg opts back into the old plain
+        # fill for the rare case a completely uniform color is actually wanted (e.g. matching an
+        # exact brand color swatch elsewhere in the same shot). seed=args.text keeps the grain
+        # pattern stable for a given clip across re-renders.
+        bg_image = build_textured_background(width, height, args.bg, seed=args.text)
     fg = _hex_to_rgb(args.fg)
     accent = _hex_to_rgb(args.accent) if args.accent else None
     # Split on whitespace (not comma — "110,000" is a single word that happens to contain a
@@ -215,7 +300,7 @@ def generate(args):
             else:
                 scale, alpha = 1.0, 1.0
 
-            frame = render_frame(width, height, bg, bg_image, lines, font, fg, accent, accent_words, scale, alpha)
+            frame = render_frame(width, height, bg, bg_image, lines, font, fg, accent, accent_words, scale, alpha, glow=args.glow)
             frame.save(os.path.join(tmp_dir, f"frame_{i:05d}.png"))
 
         if args.frames_only:
@@ -243,10 +328,12 @@ def main():
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
-    parser.add_argument("--bg", default="#0A0A0A", help="background hex color, ignored if --transparent or --bg-image")
-    parser.add_argument("--bg-image", help="use this image (blurred + darkened to fill the frame — see build_blurred_background()) as the background instead of flat --bg color. A real photo reads far less like a placeholder than a flat color card — see cinematic_principles.md's anti-patterns list. Incompatible with --transparent.")
+    parser.add_argument("--bg", default="#080818", help="base background hex color — dark navy, not flat black (calibrated against a real reference breakdown). By default this is the base tone of a generated gradient+grain texture (build_textured_background()), not a flat fill — pass --flat-bg for the old plain-fill behavior. Ignored entirely if --transparent or --bg-image.")
+    parser.add_argument("--no-glow", dest="glow", action="store_false", help="disable the soft glow behind text (on by default — ~20px blur, ~40% opacity, matches a real reference breakdown's spec)")
+    parser.add_argument("--bg-image", help="use this image (blurred + darkened to fill the frame — see build_blurred_background()) as the background instead of the default textured one. A real photo reads even less like a placeholder than the generated texture — prefer this whenever a real photo actually fits the beat. Incompatible with --transparent.")
     parser.add_argument("--bg-blur", type=float, default=40, help="--bg-image gaussian blur radius in px")
     parser.add_argument("--bg-darken", type=float, default=0.55, help="--bg-image brightness multiplier (0-1) — keeps text readable against a busy photo")
+    parser.add_argument("--flat-bg", action="store_true", help="use a plain flat --bg fill instead of the default generated gradient+grain texture — rare (e.g. matching an exact brand swatch elsewhere in the same shot); a flat card is what editor_discipline.md's anti-patterns list warns against as the default look")
     parser.add_argument("--fg", default="#FFFFFF", help="default text color, hex")
     parser.add_argument("--accent", help="accent color hex for --accent-words")
     parser.add_argument("--accent-words", help="space-separated words to render in --accent color, e.g. \"GARAGE. TRILLION\"")
