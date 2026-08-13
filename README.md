@@ -24,34 +24,6 @@ humor-technique taxonomy, and honest confidence scoring instead of invented prec
 Full workflow, pipeline stages, and file schemas live in [`SKILL.md`](./SKILL.md) — that's the
 file Claude actually reads when this skill triggers. Everything below is just human-facing setup.
 
-## Требования (коротко, по-русски)
-
-Это работает **только локально**, на компьютере с установленным и запущенным DaVinci Resolve —
-скриптовый API Resolve не достаёт до облака. Установите на свой компьютер: DaVinci Resolve,
-Python 3.9+, `ffmpeg`/`ffprobe`, и `pip3 install -r requirements.txt`.
-
-**Важно про Free vs Studio:** начиная с Resolve 19.1 (ноябрь 2024) запрос НОВОГО scripting-
-соединения (`scriptapp("Resolve")`) доступен **только в Studio** — и это верно, даже если этот
-вызов делает скрипт, запущенный самим Resolve через Workspace → Scripts (проверено напрямую).
-В бесплатной версии никакая настройка это не включает — в Preferences её просто нет. Но скрипту,
-который запускает сам Resolve (через Workspace → Scripts или консоль F6), Resolve сразу
-подставляет уже готовое, живое соединение — запрашивать новое не нужно (тоже проверено напрямую).
-Поэтому на Free есть два варианта:
-
-- **Предпочтительный:** один раз выполните `python3 scripts/resolve/install_menu_script.py` —
-  он ставит скрипт в меню Resolve. Дальше для каждого проекта Claude пишет job-файл, и вы просто
-  жмёте в Resolve: Workspace → Scripts → Comp → build_video_project. Это даёт полный пайплайн
-  (таймлайн, цветокоррекция, громкость, рендер) — так же, как в Studio, только через один клик
-  в самом Resolve вместо команды в терминале.
-- **Без установки:** `scripts/resolve/build_otio.py` пишет `.otio`-файл, который импортируется в
-  Resolve обычным File → Import Timeline → OpenTimelineIO, плюс файл `*.manual_steps.md` с тем
-  немногим, что нужно доделать руками (громкость клипов, цветокоррекция, субтитры) — проще, но
-  без автоматического рендера/грейда.
-
-Подробности — `references/resolve_scripting_api.md`.
-
-Дальше просто зовите Claude Code в папке с этим скиллом и с вашим проектом — он сам проведёт вас
-по шагам (`SKILL.md` и `scripts/check_environment.py` первым делом проверят, что всё на месте).
 
 ## Install as a Claude Code skill
 
