@@ -44,6 +44,12 @@ condensed version to hold in mind while beat-planning, not a replacement for rea
 - **Not every second can be peak density.** Compression needs a release beat, or the peaks stop
   reading as peaks (editor_discipline.md Part 20).
 
+For a Short/vertical piece specifically, `references/platform_retention_notes.md` covers what's
+actually reported to drive YouTube's own distribution (early-retention sampling, completion-rate
+thresholds, why the opening frame IS the hook and not an introduction to one) and the one hard
+technical number worth hitting exactly: mix audio to -14 LUFS integrated, YouTube's own
+normalization target — `scripts/assemble_video.py` does this automatically.
+
 ## Two other capabilities that don't need Resolve at all
 
 Most of this file describes the build pipeline (transcribe → cut → caption → tag media → plan
@@ -295,6 +301,15 @@ of recording (see below); the script requires `edit_plan.json`'s real `words_new
 can't run without it. Add `sfx`/`music_bed` to the spec's beats and top-level flag respectively —
 see `references/beat_plan_schema.md` for the full field set.
 
+**Before running the spec through the script, count the `"generate"` text-card beats.** More than
+one bare text-on-flat-background beat in the same spec (the hook and the CTA both reaching for it
+is the common way this happens) is a real content problem, not a stylistic pattern — see
+`references/cinematic_principles.md`'s anti-patterns list and `references/editor_discipline.md`
+Part 24's text critic. A hook especially deserves a real visual: a strong sourced clip (captions
+already carry the spoken line, so the text isn't lost) or the transparent-overlay technique in
+`references/code_generated_frames.md` to pair generated text with real motion instead of flat
+color. Catch this against the spec, not after a render.
+
 **Before this beat plan is "done," two more things are non-negotiable — see
 `references/editor_discipline.md` for the full reasoning behind both:**
 
@@ -403,6 +418,33 @@ open Resolve, File → Import Timeline → OpenTimelineIO, pick the `.otio` file
 the manual-steps file. No render happens automatically on this path either — rendering itself
 isn't scripting-gated, so once the timeline looks right, the user renders normally from the
 Deliver page.
+
+**No Resolve at all — assemble the finished video directly with ffmpeg.** A real, verified option,
+not just a fallback: on one real installation, `AppendToTimeline` reported complete success at
+every data-level check (item count, per-clip properties, a post-save durability re-read) while the
+placed clips never became real/visible/editable in Resolve's own Edit page, and the render came
+back solid black — importing the identical beats via OTIO worked, but for some projects skipping
+Resolve's timeline engine entirely is the more reliable choice from the start.
+
+```bash
+python3 scripts/assemble_video.py --beat-plan out/beat_plan.json \
+  --narration-audio out/_narration_declicked.wav --width 1080 --height 1920 \
+  --out out/assembled.mp4 --captions out/captions.srt --sound-library <path-to-sound-library>
+```
+
+Concatenates every beat's already-correctly-sized clip at its exact trim, mixes in any per-beat
+`sfx[]` cues (beat_plan.json's existing schema) at their exact time, two-pass loudness-normalizes
+the whole mix to -14 LUFS (see `references/platform_retention_notes.md`), and burns in captions
+(plain libass styling — good for a draft, not this skill's animated word-pop look). No sound
+library yet for a beat that wants an accent? `scripts/generate/synth_sfx.py` synthesizes a
+whoosh/impact/riser/click with ffmpeg's own audio generators — a real sourced pack always sounds
+better (`references/sound_mixing_techniques.md`'s pack discipline), this is a fallback for when
+one doesn't exist yet. Does NOT apply the style profile's CDL grade (no exact ffmpeg equivalent —
+it prints the numbers to apply by eye instead of faking an approximation). Need a real green-
+screen composite, an explosion/flash overlay, or a generated-text overlay on top of a beat before
+assembly? `scripts/overlay_clip.py` handles chroma-key, alpha, and screen/add-blend compositing —
+see that module's docstring. Resolve becomes fully optional: import the result as a single clip
+for manual polish, or ship the file as-is.
 
 ## Style profiles
 

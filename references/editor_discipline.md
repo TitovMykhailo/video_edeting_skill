@@ -262,7 +262,9 @@ footage search will find what's needed, the beat calls for a visual metaphor no 
 will have, a custom transition asset is required, an impossible camera/shot is needed, or a
 generated look is itself part of the intended art direction. Don't generate a frame just because
 it's possible — real archival material and real photography usually carry more visual truth than a
-generated stand-in, and should win by default when both are viable.
+generated stand-in, and should win by default when both are viable. See also Part 33 for
+compositing generated or green-screen elements onto/over real footage, rather than treating
+"generated" and "real" as mutually exclusive per beat.
 
 ## 23. Try multiple candidates for moments that matter
 
@@ -287,12 +289,31 @@ a single vague "does this look good":
 - **Text critic** — did the viewer have time to read it; does it compete with a face/subject for
   attention; is there too much of it; does size match importance; does emphasis land on the actual
   stressed moment; is the text even necessary at all — checked against the real rendered frame, not
-  the spec.
+  the spec. Count the beats that are a bare generated text card on a flat background with no
+  supporting visual: more than one in the same video (the hook and/or the CTA reaching for it is
+  the common case) is a real finding, not a stylistic pattern — it reads as placeholder content,
+  not a finished edit. Don't wait for a render to catch this; check it against the beat spec
+  itself before building, since fixing it there is free and fixing it after a full render/build
+  cycle isn't.
 - **Beauty critic** — not "is this technically correct" but "would I want to pause on this frame."
   Score hero shots on frame beauty, composition, depth, light, color, clarity, originality — but
   don't chase 100 on every score; contrast across shots matters more than a uniformly high average
   (see Part 7).
 - **Video critic (general)** — the full checklist above, applied to the whole piece.
+
+**Run at least the video critic as a genuinely independent pass, not just self-review.** Claude
+critiquing its own beat plan from memory tends to defend its own choices — a fresh Agent dispatch
+(the `Agent` tool, `general-purpose` subagent) that has never seen the planning conversation has
+no such bias, and can actually be harsh. The mechanism: extract a spread of real frames from the
+actual render (`ffmpeg -ss <t> -i render.mp4 -vframes 1 frame.png` at 12-20 timestamps spanning
+the whole video, not just the first few seconds), then dispatch an agent with the frame file paths
+and instructions to `Read` all of them and give a specific, evidence-cited critique — explicitly
+told to be harsh, ground every claim in a named frame/timestamp, and never soften a real problem
+into vague encouragement. Follow with a second, separate pass — either the same agent continued or
+a fresh one — specifically to turn findings into concrete fixes (which beat to replace, with what,
+and why) rather than leaving "this feels weak" as the final answer. Don't skip straight to fixing
+based on your own read of the frames; the point is the second opinion having no stake in the
+original choices.
 
 ## 25. Retention engines, not just cut speed
 
@@ -366,6 +387,24 @@ why this position, why this sound, why this cut, why this image, why not nothing
 good answer, try removing it. But remember that "it makes the moment funnier," "it makes the frame
 beautiful," "it gives the viewer a breath," and "it establishes personality" are all completely
 valid answers — editing exists to create an *experience*, not only to transmit information.
+
+## 33. Layering and compositing — not every beat has to be one flat clip
+
+A sequence of single, uncomposited clips cut back-to-back — even well-chosen ones, even fast — has
+a ceiling: it reads as "clips in a row," not as designed frames. `scripts/overlay_clip.py` gives
+three real, tested compositing techniques that push past that ceiling: **chroma-key** (a real
+green-screen reaction clip composited over a background instead of shown against its own flat
+green/room), **screen/add blend** (flash/impact/explosion-style accents punched over a beat at
+its hero moment — see Part 13, hero-moment density), and **alpha overlay** (a generated text/
+graphic element genuinely sitting over moving footage instead of on its own flat-color card — see
+Part 8, text as a visual object, and the fix in `kinetic_text.py`'s `--bg-image`, which blurs a
+real photo behind text instead of flat color for exactly the same reason). None of these need to
+happen on every beat — that would trade one monotony (flat cuts) for another (every beat
+over-decorated). Reach for one specifically where it does real work: the hero moment of a
+sequence, a beat whose only available footage is green-screen, a payoff beat that wants a hit of
+extra energy. A video built entirely from single flat clips, when compositing tools exist and cost
+nothing extra to use, is worth naming as a real gap in a critique pass (Part 24) — not a neutral
+stylistic choice.
 
 ## The full quality loop
 
