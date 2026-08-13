@@ -62,6 +62,8 @@ def main():
         argv += ["--captions", job["captions"]]
     if job.get("render_out"):
         argv += ["--render-out", job["render_out"]]
+    if job.get("skip_color_grade"):
+        argv += ["--skip-color-grade"]
 
     sys.argv = argv
     try:

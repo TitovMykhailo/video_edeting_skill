@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--media-library", required=True, help="root the beat plan's visual media paths are relative to")
     parser.add_argument("--sound-library", help="root for sfx/music_bed paths (defaults to --media-library)")
     parser.add_argument("--render-out", help="omit to build the timeline without rendering")
+    parser.add_argument("--skip-color-grade", action="store_true", help="build/render without applying color.grade_cdl — for isolating whether the grade step is involved in a rendering problem")
     args = parser.parse_args()
 
     sound_library = args.sound_library or args.media_library
@@ -178,7 +179,9 @@ def main():
         print(f"WARNING: could not write per-clip diagnostics: {e}", file=sys.stderr)
 
     color_config = style.get("color")
-    if color_config and color_config.get("grade_cdl"):
+    if args.skip_color_grade:
+        print("Skipping color grade (--skip-color-grade).", file=sys.stderr)
+    elif color_config and color_config.get("grade_cdl"):
         print("Applying color grade to video clips...", file=sys.stderr)
         applied, _ = color_grade.apply_grade_or_warn(video_items, color_config)
         print(f"Color grade applied to {applied}/{len(video_items)} clips.", file=sys.stderr)
