@@ -29,10 +29,20 @@ plain, default subtitle look, not this skill's animated word-pop caption style. 
 draft; swap in a real captioning pass (Tier 2 in code_generated_frames.md, or Resolve's own
 Fusion titles) for the final look.
 
+Audio: every beat's optional sfx[] cues (beat_plan_schema.md's existing schema — at/path/gain_db)
+are mixed in at their exact absolute time, then the whole mix (narration + SFX) is two-pass
+loudness-normalized to -14 LUFS integrated — YouTube's own normalization target (see
+references/sound_mixing_techniques.md), so the platform doesn't turn a hotter mix down
+unpredictably later. No sound library yet? scripts/generate/synth_sfx.py generates simple
+whoosh/impact/riser/click cues with ffmpeg's own audio synthesis — a real sourced SFX pack will
+always sound better and stay genre-consistent (see sound_mixing_techniques.md's pack discipline),
+this is a fallback for when one doesn't exist yet, not a replacement.
+
 Usage:
     python3 assemble_video.py --beat-plan out/beat_plan.json \
-        --narration-audio out/_narration_declicked.wav --width 1080 --height 1920 --fps 30 \
-        --out out/assembled.mp4 [--captions out/captions.srt] [--style out/style.merged.json]
+        --narration-audio out/_narration_declicked.wav --width 1080 --height 1920 \
+        --out out/assembled.mp4 [--captions out/captions.srt] [--style out/style.merged.json] \
+        [--sound-library <path>]
 """
 import argparse
 import json
@@ -83,10 +93,94 @@ def trim_segment(path, src_in, src_out, out_path):
             raise RuntimeError(f"Trimming {path} [{src_in}:{src_out}] failed:\n{result.stderr[-2000:]}")
 
 
+def collect_sfx_cues(beat_plan, sound_library):
+    """Every beat's optional sfx[] list -> [(absolute_time_s, abs_path, gain_db), ...]. Schema is
+    beat_plan_schema.md's existing sfx[].{at, path, gain_db} — at is relative to the beat's own
+    start, path is relative to --sound-library (or already absolute)."""
+    cues = []
+    for beat in beat_plan["beats"]:
+        for sfx in beat.get("sfx", []):
+            path = sfx["path"]
+            abs_path = path if os.path.isabs(path) else os.path.join(sound_library, path)
+            cues.append((beat["start"] + sfx.get("at", 0.0), abs_path, sfx.get("gain_db", 0.0)))
+    return cues
+
+
+def mix_and_normalize_audio(narration_path, sfx_cues, out_path):
+    """Mix the narration with every (time, path, gain_db) SFX cue at its absolute time, then
+    two-pass loudness-normalize the result to -14 LUFS integrated — YouTube's own normalization
+    target (louder gets turned down to match it, quieter is left alone), so mixing to it directly
+    avoids leaving level on the table without risking the platform re-normalizing a hotter mix
+    down unpredictably. Two-pass (measure, then apply with the measured values) rather than
+    single-pass loudnorm: single-pass estimates loudness from a short lookahead window and can
+    misjudge a track with a loud transient early or late; two-pass measures the WHOLE file first.
+    """
+    n_sfx = len(sfx_cues)
+    inputs = ["-i", narration_path]
+    filter_parts = ["[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=mono[a0]"]
+    mix_labels = ["[a0]"]
+    for i, (at_s, path, gain_db) in enumerate(sfx_cues, start=1):
+        inputs += ["-i", path]
+        delay_ms = max(0, round(at_s * 1000))
+        label = f"[a{i}]"
+        gain_step = f",volume={gain_db}dB" if gain_db else ""
+        filter_parts.append(
+            f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=mono{gain_step},"
+            f"adelay={delay_ms}:all=1{label}"
+        )
+        mix_labels.append(label)
+
+    mix_filter = f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0[mixed]" if n_sfx else None
+    pre_mix = ";".join(filter_parts)
+    mixed_label = "[mixed]" if n_sfx else "[a0]"
+    graph = f"{pre_mix};{mix_filter}" if n_sfx else pre_mix
+
+    with tempfile.TemporaryDirectory(prefix="loudnorm_") as tmp_dir:
+        premix_path = os.path.join(tmp_dir, "premix.wav")
+        cmd = ["ffmpeg", "-y", *inputs, "-filter_complex", graph, "-map", mixed_label, premix_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(f"Mixing narration with {n_sfx} SFX cue(s) failed:\n{result.stderr[-2000:]}")
+
+        # Pass 1: measure.
+        measure = subprocess.run(
+            ["ffmpeg", "-i", premix_path, "-af",
+             "loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=120,
+        )
+        stats_text = measure.stderr[measure.stderr.rfind("{"):measure.stderr.rfind("}") + 1]
+        try:
+            stats = json.loads(stats_text)
+        except (ValueError, json.JSONDecodeError):
+            stats = None
+
+        if stats is None:
+            # Measurement parse failed — fall back to single-pass rather than fail the whole
+            # build over a cosmetic loudness step.
+            print("WARNING: loudnorm measurement pass didn't parse; using single-pass normalization.", file=sys.stderr)
+            norm_filter = "loudnorm=I=-14:TP=-1.5:LRA=11"
+        else:
+            norm_filter = (
+                f"loudnorm=I=-14:TP=-1.5:LRA=11:"
+                f"measured_I={stats['input_i']}:measured_TP={stats['input_tp']}:"
+                f"measured_LRA={stats['input_lra']}:measured_thresh={stats['input_thresh']}:"
+                f"offset={stats['target_offset']}:linear=true"
+            )
+
+        # Pass 2: apply.
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-i", premix_path, "-af", norm_filter, "-ar", "48000", out_path],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Loudness normalization failed:\n{result.stderr[-2000:]}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--beat-plan", required=True)
     parser.add_argument("--narration-audio", required=True, help="the DECLICKED narration — render_narration_audio.py's output, not the raw recording")
+    parser.add_argument("--sound-library", help="root that beat_plan.json's sfx[].path entries are relative to — required if any beat has sfx")
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
     parser.add_argument("--out", required=True)
@@ -151,10 +245,17 @@ def main():
             srt_escaped = os.path.abspath(args.captions).replace("\\", "/").replace(":", r"\:")
             vf_args = ["-vf", f"subtitles='{srt_escaped}'"]
 
+        sfx_cues = collect_sfx_cues(beat_plan, args.sound_library or "") if any(b.get("sfx") for b in beat_plan["beats"]) else []
+        if sfx_cues and not args.sound_library:
+            raise RuntimeError(f"beat_plan.json has {len(sfx_cues)} sfx cue(s) but --sound-library wasn't given to resolve their paths.")
+        final_audio_path = os.path.join(tmp_dir, "final_audio.wav")
+        print(f"Mixing narration with {len(sfx_cues)} SFX cue(s) and normalizing to -14 LUFS...", file=sys.stderr)
+        mix_and_normalize_audio(args.narration_audio, sfx_cues, final_audio_path)
+
         out_dir = os.path.dirname(os.path.abspath(args.out)) or "."
         os.makedirs(out_dir, exist_ok=True)
         cmd = [
-            "ffmpeg", "-y", "-i", video_only_path, "-i", args.narration_audio,
+            "ffmpeg", "-y", "-i", video_only_path, "-i", final_audio_path,
             *vf_args,
             "-map", "0:v:0", "-map", "1:a:0",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
