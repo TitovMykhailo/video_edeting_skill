@@ -25,7 +25,7 @@ import tempfile
 from encode import encode_frames_to_video
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 except ImportError:
     print("Pillow is required: pip3 install Pillow", file=sys.stderr)
     sys.exit(1)
@@ -101,10 +101,38 @@ def wrap_text(draw, text, font, max_width):
     return lines
 
 
-def render_frame(width, height, bg, lines, font, fg, accent, accent_words, scale, alpha):
-    mode = "RGBA" if bg is None else "RGB"
-    base_bg = (0, 0, 0, 0) if bg is None else bg
-    img = Image.new(mode, (width, height), base_bg)
+def build_blurred_background(image_path, width, height, blur_radius=40, darken=0.55):
+    """Scale-to-cover + gaussian-blur + darken a real image into a width x height background —
+    the same "fit the frame, never show flat color" technique this skill already uses for
+    aspect-mismatched clips (see beat_plan_from_words.py's render_fitted_source), applied here so
+    a text card isn't just bare color. Darken (0-1, multiplies brightness) keeps white/light text
+    readable against a busy photo — a blurred image at full brightness competes with the text for
+    attention exactly the way editor_discipline.md's text critic warns against."""
+    src = Image.open(image_path).convert("RGB")
+    src_ratio = src.width / src.height
+    target_ratio = width / height
+    if src_ratio > target_ratio:
+        new_h = height
+        new_w = int(height * src_ratio)
+    else:
+        new_w = width
+        new_h = int(width / src_ratio)
+    src = src.resize((new_w, new_h), Image.LANCZOS)
+    left = (new_w - width) // 2
+    top = (new_h - height) // 2
+    src = src.crop((left, top, left + width, top + height))
+    src = src.filter(ImageFilter.GaussianBlur(blur_radius))
+    src = ImageEnhance.Brightness(src).enhance(darken)
+    return src
+
+
+def render_frame(width, height, bg, bg_image, lines, font, fg, accent, accent_words, scale, alpha):
+    if bg_image is not None:
+        img = bg_image.copy()
+    else:
+        mode = "RGBA" if bg is None else "RGB"
+        base_bg = (0, 0, 0, 0) if bg is None else bg
+        img = Image.new(mode, (width, height), base_bg)
     draw = ImageDraw.Draw(img)
 
     line_heights = [draw.textbbox((0, 0), line, font=font)[3] for line in lines]
@@ -156,6 +184,9 @@ def render_frame(width, height, bg, lines, font, fg, accent, accent_words, scale
 def generate(args):
     width, height, fps = args.width, args.height, args.fps
     bg = None if args.transparent else _hex_to_rgb(args.bg)
+    bg_image = None
+    if args.bg_image:
+        bg_image = build_blurred_background(args.bg_image, width, height, args.bg_blur, args.bg_darken)
     fg = _hex_to_rgb(args.fg)
     accent = _hex_to_rgb(args.accent) if args.accent else None
     # Split on whitespace (not comma — "110,000" is a single word that happens to contain a
@@ -184,7 +215,7 @@ def generate(args):
             else:
                 scale, alpha = 1.0, 1.0
 
-            frame = render_frame(width, height, bg, lines, font, fg, accent, accent_words, scale, alpha)
+            frame = render_frame(width, height, bg, bg_image, lines, font, fg, accent, accent_words, scale, alpha)
             frame.save(os.path.join(tmp_dir, f"frame_{i:05d}.png"))
 
         if args.frames_only:
@@ -212,7 +243,10 @@ def main():
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
-    parser.add_argument("--bg", default="#0A0A0A", help="background hex color, ignored if --transparent")
+    parser.add_argument("--bg", default="#0A0A0A", help="background hex color, ignored if --transparent or --bg-image")
+    parser.add_argument("--bg-image", help="use this image (blurred + darkened to fill the frame — see build_blurred_background()) as the background instead of flat --bg color. A real photo reads far less like a placeholder than a flat color card — see cinematic_principles.md's anti-patterns list. Incompatible with --transparent.")
+    parser.add_argument("--bg-blur", type=float, default=40, help="--bg-image gaussian blur radius in px")
+    parser.add_argument("--bg-darken", type=float, default=0.55, help="--bg-image brightness multiplier (0-1) — keeps text readable against a busy photo")
     parser.add_argument("--fg", default="#FFFFFF", help="default text color, hex")
     parser.add_argument("--accent", help="accent color hex for --accent-words")
     parser.add_argument("--accent-words", help="space-separated words to render in --accent color, e.g. \"GARAGE. TRILLION\"")
@@ -225,6 +259,8 @@ def main():
 
     if not args.out.lower().endswith(".mov") and not args.frames_only:
         parser.error("--out must end in .mov (ProRes/qtrle output — see encode.py's docstring for why not .mp4)")
+    if args.bg_image and args.transparent:
+        parser.error("--bg-image and --transparent are incompatible — an overlay clip's whole point is having no background of its own.")
 
     generate(args)
 
