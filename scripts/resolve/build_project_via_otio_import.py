@@ -20,9 +20,15 @@ Builds the .otio file with build_otio.py's own logic (identical track/frame-exac
 that module for the OTIO construction itself), imports it into the live project via
 ImportTimelineFromFile, then does what build_project.py normally does after building the
 timeline: apply the color grade via SetCDL, print the manual caption-import instruction, and
-render. SFX/music gain levels are NOT yet applied here (build_otio.py's manual_steps.md still
-covers those by hand) — this project has no sound library content yet, so it hasn't mattered;
-revisit if/when SFX or a music bed is added to a project built this way.
+render. SFX/music clips DO get placed on real timeline audio tracks at their correct times
+(build_otio.py's build_sfx_tracks()/build_music_track()) — only the per-clip gain_db value isn't
+applied automatically (OTIO has no reliable clip-gain carrier to round-trip through Resolve's
+importer), so build_otio.py's manual_steps.md lists every gain value to punch in by hand. Remember
+--sound-library here is a separate root from --media-library, same convention as
+assemble_video.py's --sound-library — it needs to point at wherever the project's actual sfx/
+folder lives (often the project directory itself), not the shared meme/video library root; passing
+the wrong one fails fast with "Could not resolve media path" for the first sfx cue rather than
+silently placing nothing.
 
 Usage: same arguments as build_project.py.
 """
