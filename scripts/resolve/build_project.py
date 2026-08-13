@@ -178,6 +178,31 @@ def main():
     except Exception as e:  # noqa: BLE001 — diagnostic only, never fail the real build over this
         print(f"WARNING: could not write per-clip diagnostics: {e}", file=sys.stderr)
 
+    # Real, documented Resolve behavior (references/resolve_scripting_api.md): AppendToTimeline
+    # placements can read back successfully IN-SESSION — item count, names, every property —
+    # while not actually being durable/composited until the project is saved. This is the likely
+    # explanation for a case that survived four other ruled-out theories: the diagnostics above
+    # query the TimelineItem objects AppendToTimeline itself returned, which is exactly the shape
+    # of read the known bug says can't be trusted — a real screenshot of the Edit page showed the
+    # video track visibly empty despite an in-session "10 Clip(s), every property normal" state.
+    # Save now and re-read the track independently (GetItemListInTrack, not the original returned
+    # objects) from the saved state, which the bug can't fake. Guarded on project name per a
+    # separate documented Resolve behavior: SaveProject on the untouched default "Untitled
+    # Project" can't succeed (GUI) or hangs forever (headless) — doesn't apply to a script-created,
+    # explicitly-named project like this one, but the guard costs nothing and rules it out.
+    if project.GetName() != "Untitled Project":
+        project_manager.SaveProject()
+    post_save_items = timeline.GetItemListInTrack("video", 1)
+    post_save_count = len(post_save_items) if post_save_items else 0
+    print(f"Post-save video track item count: {post_save_count} (expected {len(video_items)})", file=sys.stderr)
+    if post_save_count != len(video_items):
+        raise RuntimeError(
+            f"Video track has {post_save_count} items after saving, expected {len(video_items)} "
+            "— the append placements weren't durable. This is documented Resolve behavior, not a "
+            "bug in this script: see references/resolve_scripting_api.md's AppendToTimeline "
+            "durability note."
+        )
+
     color_config = style.get("color")
     if args.skip_color_grade:
         print("Skipping color grade (--skip-color-grade).", file=sys.stderr)
