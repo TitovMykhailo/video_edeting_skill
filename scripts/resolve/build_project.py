@@ -211,6 +211,30 @@ def main():
         applied, _ = color_grade.apply_grade_or_warn(video_items, color_config)
         print(f"Color grade applied to {applied}/{len(video_items)} clips.", file=sys.stderr)
 
+    # Six independent theories (track enable, color management, proxy mode, per-clip properties,
+    # post-save durability, H.264-vs-ProRes decoder compatibility) have now all been ruled out
+    # with real evidence, yet the render is still solid black every time. Next real question:
+    # is this specific to the RENDER/DELIVER pipeline, or is the compositing itself already wrong
+    # even in Resolve's own internal state? ExportCurrentFrameAsStill grabs whatever Resolve is
+    # ACTUALLY compositing at the current playhead, completely bypassing SetRenderSettings/
+    # AddRenderJob/StartRendering — a different code path than render.py uses entirely. If this
+    # comes back with real content, the problem is in the render/deliver pipeline specifically; if
+    # it's ALSO black, the problem is in compositing itself and rendering was never the issue.
+    try:
+        still_dir = os.path.dirname(os.path.abspath(args.beat_plan))
+        fps_int = round(fps)
+        start_frame = timeline.GetStartFrame()
+        for offset_frames, label in ((50, "beat0"), (400, "midway"), (700, "beat9")):
+            target_frame = start_frame + offset_frames
+            total_s = target_frame // fps_int
+            tc = f"{total_s // 3600:02d}:{(total_s % 3600) // 60:02d}:{total_s % 60:02d}:{target_frame % fps_int:02d}"
+            ok_tc = timeline.SetCurrentTimecode(tc)
+            still_path = os.path.join(still_dir, f"_resolve_still_{label}.png")
+            ok_still = project.ExportCurrentFrameAsStill(still_path)
+            print(f"Still at {label} (tc={tc}, SetCurrentTimecode={ok_tc}): ExportCurrentFrameAsStill={ok_still} -> {still_path}", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001 — diagnostic only, never fail the real build over this
+        print(f"WARNING: could not export diagnostic stills: {e}", file=sys.stderr)
+
     sfx_count = sum(len(b.get("sfx", [])) for b in beat_plan["beats"])
     if sfx_count:
         print(f"Placing {sfx_count} SFX cue(s)...", file=sys.stderr)
