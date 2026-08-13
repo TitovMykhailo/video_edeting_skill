@@ -173,10 +173,35 @@ JSON sidecar (query used, source URL, license note) that `index_media.py scan` p
 other new file — they still need the same tagging pass before `query` will surface them well,
 since a generic "typing on laptop" search result needs an actual mood/description judgment too.
 
-There's deliberately no `fetch_stock.py`-equivalent for audio: free stock-audio APIs with clear,
-standardized commercial-use terms are less consistent than Pexels/Pixabay for video, so this skill
-doesn't automate sourcing SFX/music. Build the sound library from whatever the user already owns
-or licenses, and tag it the same way as everything else.
+There's still no scripted `fetch_stock.py`-equivalent for audio (no API-key-based automation) —
+free stock-audio APIs with clear, standardized commercial-use terms are less consistent than
+Pexels/Pixabay for video. But a real, repeatable MANUAL workflow now exists and is worth using
+over `scripts/generate/synth_sfx.py`'s synthesized tones whenever real SFX matter more than zero
+setup time (synthesized whooshes/impacts are a functional fallback, not a substitute for real
+sound design — see `sound_mixing_techniques.md`):
+
+- **Mixkit** (mixkit.co/free-sound-effects/) — free for commercial and non-commercial use, no
+  attribution required. Its category pages (`/free-sound-effects/whoosh/`, `/impact/`, `/click/`,
+  `/cinematic/` for riser-style tension builds, etc.) are plain enough that `curl`ing the page and
+  grepping for `https://[^"]*-preview\.mp3` finds direct, downloadable file URLs — confirmed live,
+  no API key or login needed. Download a few candidates per category rather than trusting the
+  first result: category pages mix genuinely single-hit sounds with multi-hit sequences (a "click"
+  page can return a double-click or a 5-blip ratchet, not a single blip) and full sound-design
+  clips with long reverb tails (a 4-8s "impact" when a beat needs a 1s accent).
+- **Verify every download before using it** — this is the same waveform-image discipline this
+  file already describes for tagging any audio asset, just applied as a real check instead of
+  only a tagging aid: render each candidate with `ffmpeg -i <file> -filter_complex
+  "showwavespic=s=600x120" -frames:v 1 <out>.png` and look at the shape (a whoosh should swell in
+  and out, a riser should build continuously toward the end, an impact/click should be one sharp
+  transient with a short decay — see this file's waveform-reading guide above), plus
+  `ffmpeg -i <file> -af volumedetect -f null -` to confirm it isn't silent or clipped
+  (`max_volume` near but under 0 dB, not positive). Trim with `ffmpeg -i in -t <n> -af
+  "afade=t=out:st=<n-0.15>:d=0.15" out` to cut a long tail down and avoid an abrupt stop. Confirmed
+  live on a real project: this caught a "click" candidate that was actually a multi-blip ratchet
+  (retrimmed to isolate one blip) before it went anywhere near a real mix.
+- Build the sound library from whatever the user already owns/licenses first — this workflow is
+  for filling a specific gap (a beat needs a real whoosh/impact/riser and nothing suitable exists
+  yet), not a default first move.
 
 ## Generated sources (`scripts/generate/`)
 
