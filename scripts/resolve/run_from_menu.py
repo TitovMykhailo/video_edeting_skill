@@ -31,6 +31,7 @@ if SKILL_SCRIPTS_ROOT not in sys.path:
     sys.path.insert(0, SKILL_SCRIPTS_ROOT)
 
 import build_project  # noqa: E402
+import build_project_via_otio_import  # noqa: E402
 
 
 def main():
@@ -45,6 +46,46 @@ def main():
 
     with open(JOB_FILE, encoding="utf-8") as f:
         job = json.load(f)
+
+    # "build_mode": "otio_import" (default) uses build_project_via_otio_import.py — builds an
+    # .otio file and imports it via MediaPool.ImportTimelineFromFile instead of AppendToTimeline.
+    # Why this is the default now: on a real project, AppendToTimeline reported complete success
+    # for the video track (correct count, correct per-clip properties, a post-save re-read all
+    # confirmed durable) while the placed items were never real/interactive — invisible and
+    # unselectable in the Edit page, and both a direct frame export and the final render came back
+    # solid black throughout. The exact same narration audio, placed via AppendToTimeline WITHOUT
+    # an explicit recordFrame, worked fine — only explicit-recordFrame video placement showed
+    # this. Importing the identical beats via OTIO instead (a different code path entirely)
+    # produced a real, visible, editable timeline on the same installation. Set
+    # "build_mode": "append_to_timeline" to use the original path if a future Resolve
+    # update fixes the underlying AppendToTimeline issue and direct placement is preferred again
+    # (it doesn't need the extra OTIO round-trip, and it's the only path that also places SFX/
+    # music gain levels automatically — see build_project_via_otio_import.py's docstring).
+    build_mode = job.get("build_mode", "otio_import")
+
+    if build_mode == "otio_import":
+        argv = [
+            "build_project_via_otio_import.py",
+            "--project-name", job["project_name"],
+            "--narration-audio", job["narration_audio"],
+            "--edit-plan", job["edit_plan"],
+            "--beat-plan", job["beat_plan"],
+            "--style", job["style"],
+            "--aspect", job["aspect"],
+            "--media-library", job["media_library"],
+        ]
+        if job.get("sound_library"):
+            argv += ["--sound-library", job["sound_library"]]
+        if job.get("captions"):
+            argv += ["--captions", job["captions"]]
+        if job.get("render_out"):
+            argv += ["--render-out", job["render_out"]]
+        sys.argv = argv
+        try:
+            build_project_via_otio_import.main()
+        except (RuntimeError, FileNotFoundError, ValueError, KeyError) as e:
+            print(f"\nERROR: {e}", file=sys.stderr)
+        return
 
     argv = [
         "build_project.py",
