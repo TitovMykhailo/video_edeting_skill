@@ -17,6 +17,11 @@ Requires every beat's media to already be exactly --width x --height: beat_plan_
 guarantees this for every beat it builds (see that module's aspect_mismatched()/
 render_fitted_source()). This script checks each beat's real dimensions with ffprobe and refuses
 to guess/distort a mismatched one rather than silently stretching or cropping it wrong.
+A beat whose source aspect already matched the target (common on a landscape 16:9 project pulling
+in landscape source clips — beat_plan_from_words.py skips reframing those entirely) keeps its
+original library-relative media.path instead of getting rewritten to an absolute generated path;
+--media-library resolves those, the same way --sound-library already resolves sfx[]/music_bed
+paths.
 
 Does NOT apply a color grade — CDL (slope/offset/power) doesn't have an exact ffmpeg equivalent,
 and shipping an approximate translation that LOOKS like the real grade but isn't would be worse
@@ -44,7 +49,7 @@ Usage:
     python3 assemble_video.py --beat-plan out/beat_plan.json \
         --narration-audio out/_narration_declicked.wav --width 1080 --height 1920 \
         --out out/assembled.mp4 [--captions out/captions.srt] [--style out/style.merged.json] \
-        [--sound-library <path>]
+        [--sound-library <path>] [--media-library <path>]
 """
 import argparse
 import json
@@ -217,6 +222,7 @@ def main():
     parser.add_argument("--beat-plan", required=True)
     parser.add_argument("--narration-audio", required=True, help="the DECLICKED narration — render_narration_audio.py's output, not the raw recording")
     parser.add_argument("--sound-library", help="root that beat_plan.json's sfx[].path entries are relative to — required if any beat has sfx")
+    parser.add_argument("--media-library", help="root that a beat's media.path resolves against when it's not already absolute — beat_plan_from_words.py only rewrites a beat's path to absolute when it actually needed reframing (see aspect_mismatched()); a beat whose source aspect already matched the target keeps its original library-relative path, so this is required whenever beat_plan.json has any such beat (landscape source clips in a 16:9 project, the common case — confirmed missing produces a hard, immediate ffprobe FileNotFoundError rather than a silent wrong guess)")
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
     parser.add_argument("--out", required=True)
@@ -245,6 +251,15 @@ def main():
         for i, beat in enumerate(beat_plan["beats"]):
             media = beat["media"]
             path = media["path"]
+            if not os.path.isabs(path):
+                if not args.media_library:
+                    raise RuntimeError(
+                        f"Beat {i}'s media.path ('{path}') is relative but --media-library wasn't given. "
+                        "This happens whenever a beat's source aspect already matched the target and "
+                        "beat_plan_from_words.py left its original library-relative path untouched — "
+                        "pass the same --media-library used to build beat_plan.json."
+                    )
+                path = os.path.join(args.media_library, path)
             dims = probe_dimensions(path)
             if dims != (args.width, args.height):
                 raise RuntimeError(
