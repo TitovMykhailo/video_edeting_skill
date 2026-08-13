@@ -145,6 +145,15 @@ def main():
         "-itsoffset", str(args.start), "-t", str(overlay_duration), "-i", args.overlay,
         "-filter_complex", filter_complex,
         "-map", "[out]", "-map", "0:a?",
+        # -t here (on the OUTPUT, not an input) matters even though the base input is never
+        # trimmed on its own — reproduced live: compositing a base probed at 3.2333s produced a
+        # 98-frame/3.2667s output, one frame longer than the base's own real length, because the
+        # base's container-reported duration and its actual decoded/re-encoded frame count don't
+        # agree to sub-frame precision, and nothing downstream of the filter graph was clamping to
+        # the shorter of the two. A one-frame overhang is exactly the class of bug this skill's own
+        # to_frame() discipline exists to prevent elsewhere — matters here too, since this output
+        # is meant to slot into that same frame-exact pipeline.
+        "-t", str(base_duration),
         "-c:v", "prores_ks", "-profile:v", "2", "-pix_fmt", "yuv422p10le",
         "-c:a", "copy",
         args.out,

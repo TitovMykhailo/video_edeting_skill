@@ -102,7 +102,13 @@ def check_reuse_density(spec_beats, beat_times, cap_s):
 def check_ip_risk(spec_beats, media_library):
     """Cross-references each 'media' beat's path against _media_index.json's ip_risk tag (see
     media_tagging_schema.md) and applies editor_discipline.md Part 35's concrete rule: at most one
-    Tier C (ip_risk) beat per video, never as the hook (beat 0)."""
+    Tier C (ip_risk=studio_ip) beat per video, never as the hook (beat 0). Tier B
+    (ip_risk=recognizable_individual) is surfaced too -- worth seeing -- but does NOT count toward
+    that cap: Part 35 is explicit that Tier B is "an established, widely-tolerated meme-culture
+    norm," a different, lower risk profile than Tier C's real Content-ID exposure. Counting both
+    tiers toward the same limit was a real bug here, caught live: a real rebuild of project 1
+    replaced two Tier C clips with Tier B ones specifically to get compliant, and this check still
+    flagged it as still over the cap until fixed to only count studio_ip."""
     index_path = os.path.join(media_library, "_media_index.json")
     if not os.path.exists(index_path):
         return []
@@ -121,8 +127,9 @@ def check_ip_risk(spec_beats, media_library):
     for i, path, risk in flagged:
         hook_note = " - THIS IS THE HOOK BEAT, Part 35 says never" if i == 0 else ""
         warnings.append(f"Beat {i} ('{path}') tagged ip_risk={risk}{hook_note}.")
-    if len(flagged) > 1:
-        warnings.append(f"{len(flagged)} ip_risk-tagged beats in this video - Part 35 caps this at 1.")
+    tier_c_count = sum(1 for _, _, risk in flagged if risk == "studio_ip")
+    if tier_c_count > 1:
+        warnings.append(f"{tier_c_count} studio_ip (Tier C) beats in this video - Part 35 caps this at 1.")
     return warnings
 
 
